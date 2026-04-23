@@ -20,7 +20,8 @@ Works in interactive dev sessions, CI pipelines, and scheduled/cron contexts.
 ## Install
 
 ```
-/plugin install dpguthrie/bt-flywheel
+/plugin marketplace add dpguthrie/bt-flywheel
+/plugin install bt-flywheel@bt-flywheel
 ```
 
 ## Usage
