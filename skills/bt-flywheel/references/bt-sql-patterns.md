@@ -12,7 +12,7 @@ SQL query templates for the Braintrust flywheel. Replace `<PROJECT_ID>` with you
 - Fields with spaces must be double-quoted: `scores."My Score"`
 - No subqueries, JOINs, UNIONs, or window functions
 - Use `ILIKE` for case-insensitive matching, `MATCH` for full-word search
-
+- Use MATCH to search a specific field for exact word matches, or search() to search across all text fields at once.  search() is equivalent to writing input MATCH query OR output MATCH query OR ... for each text field
 ---
 
 ## Schema Discovery

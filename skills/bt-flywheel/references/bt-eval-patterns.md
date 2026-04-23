@@ -9,7 +9,7 @@
 
 ---
 
-## Standard Invocation (bt eval preferred)
+## Standard Invocation
 
 ```bash
 # Source .env first — bt CLI auth runs before load_dotenv() in eval scripts
@@ -23,9 +23,9 @@ bt eval <eval_file>
 braintrust eval --env-file .env <eval_file>
 ```
 
-## Smoke Run (first 20 examples — fast sanity check)
+---
 
-> Check `bt eval --help` first — `--first` may not be available in your `bt` version.
+## Smoke Run (first N examples — fast sanity check)
 
 ```bash
 set -a && source .env && set +a
@@ -34,13 +34,51 @@ bt eval --first 20 <eval_file>
 
 If smoke run shows near-zero scores: **stop and go back to Curate/Iterate**. Do not run full eval.
 
-## Deterministic Sample (reproducible subset for CI)
+---
 
-> Check `bt eval --help` first — `--sample` and `--sample-seed` may not be available in your `bt` version.
+## Deterministic Sample (reproducible subset for CI)
 
 ```bash
 set -a && source .env && set +a
 bt eval --sample 20 --sample-seed 7 <eval_file>
+```
+
+---
+
+## Watch Mode (re-run on file changes — useful during iteration)
+
+```bash
+set -a && source .env && set +a
+bt eval --watch <eval_file>
+```
+
+---
+
+## Filter: Run Only Specific Evaluators
+
+```bash
+bt eval --filter <expression> <eval_file>
+```
+
+---
+
+## Override Evaluator Parameters
+
+```bash
+# Override individual parameters (value is JSON)
+bt eval --param model='"claude-sonnet-4-6"' <eval_file>
+bt eval --param temperature=0.7 <eval_file>
+
+# Override multiple parameters at once with a JSON object
+bt eval --param '{"model":"claude-sonnet-4-6","temperature":0.7}' <eval_file>
+```
+
+---
+
+## Run Without Sending Logs (local-only)
+
+```bash
+bt eval --no-send-logs <eval_file>
 ```
 
 ---

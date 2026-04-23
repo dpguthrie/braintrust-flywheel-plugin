@@ -1,65 +1,125 @@
-# bt functions and bt datasets Patterns
+# bt functions, bt scorers, bt tools, bt prompts Patterns
 
-## Availability Note
+## Command Overview
 
-`bt functions` may not be available in all `bt` versions. Before using it, run `bt --help` and check whether `functions` appears in the command list.
-
-**If `bt functions` is unavailable:**
-- For reading prompts: use `bt prompts list --project <name>` (always available)
-- For writing scorers/prompts: use the Braintrust UI or the Python SDK directly
-
-Similarly, `bt datasets` may not be available — check with `bt --help`.
+`bt functions` manages all function types (LLM prompts, scorers, tools, tasks, etc.) with full CRUD + invoke.
+Type-scoped aliases `bt scorers`, `bt tools`, and `bt prompts` are read-only shortcuts (list/view/delete — no push/pull/invoke).
 
 ---
 
-## bt functions Commands
+## bt functions list
 
-### List all functions in a project
 ```bash
-bt functions list --project <project-name>
+# List all functions in the active project
+bt functions list -p <project-name>
+
+# Filter by type: llm, scorer, task, tool, custom-view, preprocessor, facet, classifier, tag, parameters
+bt functions list -p <project-name> -t scorer
+bt functions list -p <project-name> --json
 ```
 
-### Read a specific function (prompt, scorer, or tool)
+---
+
+## bt functions view
+
 ```bash
 bt functions view <function-slug> -p <project-name>
-```
-
-### Push an updated function from a local file
-```bash
-bt functions push -p <project-name> --file <path-to-file>
+bt functions view <function-slug> -p <project-name> --json
 ```
 
 ---
 
-## Fallback: bt prompts (read operations only)
+## bt functions invoke
+
+Test a function without running a full eval:
 
 ```bash
-# List all prompts
+# Invoke with JSON input
+bt functions invoke <slug> -p <project-name> --input '{"key": "value"}'
+
+# Invoke an LLM prompt with a user message
+bt functions invoke <slug> -p <project-name> --message "Summarize this"
+
+# Pin to a specific version
+bt functions invoke <slug> -p <project-name> --version <version-id>
+
+# Force JSON output mode
+bt functions invoke <slug> -p <project-name> --mode json
+```
+
+---
+
+## bt functions push
+
+Push local function definitions (prompts, scorers, tools) to Braintrust:
+
+```bash
+# Push from a file or directory
+bt functions push -p <project-name> <path>
+bt functions push -p <project-name> --file <path>
+
+# Control behavior when slug already exists (default: error)
+bt functions push -p <project-name> --if-exists replace <path>
+bt functions push -p <project-name> --if-exists ignore <path>
+
+# Skip confirmation prompt (for CI)
+bt functions push -p <project-name> -y <path>
+```
+
+---
+
+## bt functions pull
+
+Download remote function definitions as local files:
+
+```bash
+# Pull a specific function by slug
+bt functions pull <slug> -p <project-name>
+
+# Pull to a specific output directory (default: ./braintrust)
+bt functions pull <slug> -p <project-name> --output-dir ./scorers
+
+# Pull as Python instead of TypeScript
+bt functions pull <slug> -p <project-name> --language python
+
+# Overwrite even if local file is modified
+bt functions pull <slug> -p <project-name> --force
+```
+
+---
+
+## bt functions delete
+
+```bash
+bt functions delete <slug> -p <project-name>
+```
+
+---
+
+## bt prompts (read-only alias)
+
+```bash
 bt prompts list -p <project-name>
-
-# View a specific prompt's content
 bt prompts view <slug> -p <project-name>
+bt prompts delete <slug> -p <project-name>
 ```
 
 ---
 
-## bt datasets Commands (when available)
+## bt scorers / bt tools (read-only aliases)
 
-### List datasets in a project
 ```bash
-bt datasets list --project <project-name>
+bt scorers list -p <project-name>
+bt scorers view <slug> -p <project-name>
+bt tools list -p <project-name>
+bt tools view <slug> -p <project-name>
 ```
-
-### Read dataset contents
-```bash
-bt datasets get --project <project-name> --name <dataset-name>
-```
-
-If `bt datasets` is unavailable, use `bt sql` to inspect dataset content and the Python SDK below for writes.
 
 ---
 
 ## Python SDK: Dataset Writes
+
+`bt` has no `datasets` subcommand — use the Python SDK for dataset operations:
 
 ```python
 import braintrust, os
@@ -74,4 +134,9 @@ dataset.insert({
 })
 ```
 
-Note: use `braintrust.init_dataset()` directly — do **not** use the return value of `braintrust.login()`. `login()` returns `None`.
+Use `braintrust.init_dataset()` directly — `braintrust.login()` returns `None`.
+
+To inspect existing dataset content, use `bt sql`:
+```bash
+bt sql "SELECT * FROM dataset('<dataset-id>') LIMIT 20"
+```
