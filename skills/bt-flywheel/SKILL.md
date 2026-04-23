@@ -265,16 +265,7 @@ Before editing, read the relevant files to understand current structure. Make ch
 
 **In interactive mode**: Describe the planned code change before making it. Wait for confirmation.
 
-**In autonomous mode**: Apply the change and commit with a message that includes production evidence:
-
-```
-fix(<component>): <what changed>
-
-Based on production findings: <brief description>
-Baseline experiment: <experiment-id>
-```
-
-Where `<component>` is the agent part being changed, e.g., `system-prompt`, `tool-defs`, `routing`.
+**In autonomous mode**: Apply the change and log what was changed and why (file, what changed, production evidence, experiment ID). Do not run `git add` or `git commit` — the calling workflow owns all git operations.
 
 ---
 
