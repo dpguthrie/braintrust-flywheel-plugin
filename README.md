@@ -59,12 +59,12 @@ jobs:
       system_context: |
         Describe your agent here...
       code_paths: src/ evals/ scorers.py
-      extra_env: |
-        OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}
     secrets: inherit
 ```
 
-Required secrets in your repo: `ANTHROPIC_API_KEY`, `BRAINTRUST_API_KEY`.
+Required secrets in your repo: `ANTHROPIC_API_KEY` (to run Claude Code), `BRAINTRUST_API_KEY`.
+
+If your agent calls a third-party LLM directly (OpenAI, Gemini, etc.), pass its key via `extra_env` — the flywheel itself doesn't need it.
 
 See [`examples/flywheel-caller.yml`](examples/flywheel-caller.yml) for the full annotated example.
 
