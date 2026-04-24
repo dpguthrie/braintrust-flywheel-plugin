@@ -127,6 +127,19 @@ If no rows are found after 30 days: note this ("project has no production traffi
 
 Store all discovered column names and the resolved project ID for use in subsequent phases.
 
+**Resolve app URL and org slug** (needed to construct Braintrust links in the summary):
+
+```bash
+bt status --json
+# Returns: { "org": "<org-name>", ... }
+```
+
+Store the org name. Braintrust URLs follow this pattern (URL-encode spaces in org/project names as `%20`):
+- Experiment: `https://www.braintrust.dev/app/<org>/p/<project-name>/experiments/<experiment-id>`
+- Trace: `https://www.braintrust.dev/app/<org>/p/<project-name>/r/<trace-id>`
+
+These links will be embedded in the summary and narrative outputs.
+
 ---
 
 ## Phase 2: Discover
@@ -299,7 +312,10 @@ bt eval <eval_file>
 braintrust eval --env-file .env <eval_file>
 ```
 
-**Capture the experiment ID** from `bt eval` output — it is printed on completion and is required for Phase 7.
+**Capture the experiment ID and URL** from `bt eval` output — the ID is printed on completion and is required for Phase 7. Immediately construct the experiment URL using the pattern resolved in Phase 1 Orient and store it alongside the ID:
+```
+experiment_url = https://www.braintrust.dev/app/<org>/p/<project-name>/experiments/<experiment-id>
+```
 
 **In interactive mode**: Present the eval command. Ask:
 - "Run smoke run first?" → run `--first 20` first (if available in your `bt` version)
@@ -335,13 +351,22 @@ bt sql "SELECT id, scores.\"<SCORE_COL>\" FROM experiment('<new-id>') WHERE scor
 bt sql "SELECT scores.\"<SCORE_COL>\", COUNT(*) as count FROM experiment('<new-id>') GROUP BY scores.\"<SCORE_COL>\" ORDER BY scores.\"<SCORE_COL>\""
 ```
 
-**Step 4 — Drill into regressions:** For any regressed trace IDs, use `bt view trace --object-ref project_logs:<project-id> --trace-id <id> --json` to understand what went wrong. If the trace is not found via `project_logs`, view it in the Braintrust UI using the experiment ID — experiment trace IDs are not always reachable through `project_logs`.
+**Step 4 — Drill into regressions:** For each regressed trace ID, construct its URL and attempt to fetch its span tree:
+```bash
+bt view trace --object-ref project_logs:<project-id> --trace-id <id> --json
+# If not found via project_logs, try the experiment object ref:
+bt view trace --object-ref experiment:<experiment-id> --trace-id <id> --json
+```
+Construct the trace URL: `https://www.braintrust.dev/app/<org>/p/<project-name>/r/<trace-id>` — include this in the verdict even if the span fetch fails.
 
 **Compile verdict:**
 ```
 ANALYZE VERDICT:
 - <SCORE_COL>: baseline avg=X → new avg=Y (delta: Z)
+- Experiment: <url>
 - Regressions: N rows scoring < 0.5
+  - <trace-id>: score=X — <url>
+  - <trace-id>: score=X — <url>
 - Scorer health: [normal distribution / bimodal — possible scorer issue]
 - New failure patterns: [describe if any]
 - Datasets still missing: [describe uncovered cases if any]
@@ -381,9 +406,18 @@ Route based on the Analyze verdict. When multiple conditions apply, address them
   },
   "experiment": {
     "new": "<experiment-id>",
+    "new_url": "https://www.braintrust.dev/app/<org>/p/<project>/experiments/<experiment-id>",
     "baseline": "<experiment-id>",
+    "baseline_url": "https://www.braintrust.dev/app/<org>/p/<project>/experiments/<baseline-id>",
     "metric_delta": { "<SCORE_COL>": 0.05 }
   },
+  "regressions": [
+    {
+      "trace_id": "<trace-id>",
+      "score": 0.0,
+      "url": "https://www.braintrust.dev/app/<org>/p/<project>/r/<trace-id>"
+    }
+  ],
   "loop_decision": "<done | re-discover | re-curate | re-iterate>",
   "loop_reasoning": "<reasoning>"
 }
@@ -407,10 +441,16 @@ After writing `bt-flywheel-summary.json`, write a second file `bt-flywheel-narra
 
 ### Why These Changes
 [Cite the actual production evidence that drove each change: SQL query results,
-specific score values, trace IDs, failure patterns observed]
+specific score values, trace IDs with Braintrust links, failure patterns observed]
 
 ### Score Impact
-[Before/after comparison from Phase 7 Analyze — use actual numbers]
+[Before/after comparison from Phase 7 Analyze — use actual numbers and link to both experiments]
+
+| | Baseline | New |
+|---|---|---|
+| Experiment | [<baseline-id>](<baseline_url>) | [<new-id>](<new_url>) |
+| <SCORE_COL> avg | X | Y |
+| Regressions | — | [<trace-id>](<url>), ... |
 
 ### Reviewer Checklist
 - [ ] Score improvements are genuine (not overfitting to the eval dataset)
