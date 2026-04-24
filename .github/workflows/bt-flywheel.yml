@@ -1,0 +1,281 @@
+name: Braintrust Flywheel
+
+# Reusable workflow — call this from your repo to run the self-improvement cycle.
+#
+# Minimal caller example:
+#
+#   jobs:
+#     flywheel:
+#       uses: dpguthrie/flywheel-plugin/.github/workflows/bt-flywheel.yml@main
+#       with:
+#         project_name: my-project
+#         system_context: |
+#           Describe your agent here: architecture, eval files, key metrics, file locations.
+#         code_paths: src/ evals/ scorers.py
+#       secrets: inherit
+#
+# See examples/flywheel-caller.yml for a full annotated example.
+
+on:
+  workflow_call:
+    inputs:
+
+      project_name:
+        description: "Braintrust project name for the agent under improvement"
+        required: true
+        type: string
+
+      system_context:
+        description: >
+          Description of your agent system passed as context to the flywheel prompt.
+          Include: architecture overview, eval file paths, key metric names, and where
+          agent code lives. The more specific, the better the flywheel will perform.
+        required: true
+        type: string
+
+      code_paths:
+        description: >
+          Space-separated file/directory paths to watch for changes (used in git add).
+          Example: "src/ evals/ scorers.py"
+          Defaults to the repo root — set this to avoid staging output files.
+        required: false
+        type: string
+        default: ""
+
+      extra_env:
+        description: >
+          Additional KEY=VALUE lines written to .env before running the flywheel.
+          Use this for non-standard API keys and project-specific env vars.
+          Values from ${{ secrets.FOO }} are masked in logs by GitHub Actions.
+          Example:
+            OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}
+            BRAINTRUST_GATEWAY_URL=https://gateway.braintrust.dev
+        required: false
+        type: string
+        default: ""
+
+      timeout_minutes:
+        description: "Job timeout in minutes"
+        required: false
+        type: number
+        default: 90
+
+      setup_python:
+        description: "Install Python and run python_install_cmd before the flywheel"
+        required: false
+        type: boolean
+        default: false
+
+      python_version:
+        description: "Python version to install (only used when setup_python is true)"
+        required: false
+        type: string
+        default: "3.12"
+
+      python_install_cmd:
+        description: "Command to install Python dependencies (only used when setup_python is true)"
+        required: false
+        type: string
+        default: "uv sync"
+
+      setup_node:
+        description: "Install Node.js and run node_install_cmd before the flywheel"
+        required: false
+        type: boolean
+        default: false
+
+      node_version:
+        description: "Node.js version to install (only used when setup_node is true)"
+        required: false
+        type: string
+        default: "20"
+
+      node_install_cmd:
+        description: "Command to install Node.js dependencies (only used when setup_node is true)"
+        required: false
+        type: string
+        default: "npm install"
+
+    secrets:
+      ANTHROPIC_API_KEY:
+        required: true
+      BRAINTRUST_API_KEY:
+        required: true
+
+jobs:
+  flywheel:
+    runs-on: ubuntu-latest
+    timeout-minutes: ${{ inputs.timeout_minutes }}
+
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # ── Optional: Python setup ──────────────────────────────────────────────
+
+      - name: Install uv
+        if: inputs.setup_python && contains(inputs.python_install_cmd, 'uv')
+        uses: astral-sh/setup-uv@v6
+
+      - name: Set up Python
+        if: inputs.setup_python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ inputs.python_version }}
+
+      - name: Install Python dependencies
+        if: inputs.setup_python
+        run: ${{ inputs.python_install_cmd }}
+
+      # ── Optional: Node.js setup ─────────────────────────────────────────────
+
+      - name: Set up Node.js
+        if: inputs.setup_node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node_version }}
+
+      - name: Install Node.js dependencies
+        if: inputs.setup_node
+        run: ${{ inputs.node_install_cmd }}
+
+      # ── Flywheel tooling ────────────────────────────────────────────────────
+
+      - name: Install Claude Code CLI
+        run: npm install -g @anthropic-ai/claude-code
+
+      - name: Install Braintrust CLI
+        run: |
+          curl -fsSL https://bt.dev/cli/install.sh | bash
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+
+      - name: Install bt-flywheel plugin skill
+        run: |
+          BASE="https://raw.githubusercontent.com/dpguthrie/flywheel-plugin/main/skills/bt-flywheel"
+          mkdir -p .claude/skills/bt-flywheel/references
+          curl -fsSL "${BASE}/SKILL.md" -o .claude/skills/bt-flywheel/SKILL.md
+          for f in bt-eval-patterns bt-functions-patterns bt-sql-patterns bt-sync-patterns bt-topics-patterns bt-view-patterns; do
+            curl -fsSL "${BASE}/references/${f}.md" \
+              -o ".claude/skills/bt-flywheel/references/${f}.md" 2>/dev/null || true
+          done
+
+      # ── Environment ─────────────────────────────────────────────────────────
+
+      - name: Write .env
+        run: |
+          cat >> .env << 'EOF'
+          ANTHROPIC_API_KEY=${{ secrets.ANTHROPIC_API_KEY }}
+          BRAINTRUST_API_KEY=${{ secrets.BRAINTRUST_API_KEY }}
+          BRAINTRUST_DEFAULT_PROJECT=${{ inputs.project_name }}
+          ${{ inputs.extra_env }}
+          EOF
+
+      # ── Run the flywheel ────────────────────────────────────────────────────
+
+      - name: Run flywheel optimization cycle
+        id: flywheel
+        run: |
+          claude --print --dangerously-skip-permissions \
+            -p "$FLYWHEEL_PROMPT" \
+            2>&1 | tee flywheel-output.log
+        env:
+          FLYWHEEL_PROMPT: |
+            Invoke the Skill tool with skill='bt-flywheel' to run the full self-improvement
+            optimization cycle in autonomous CI mode.
+
+            ${{ inputs.system_context }}
+
+            When complete, ensure bt-flywheel-summary.json and bt-flywheel-narrative.md
+            are both written to the working directory.
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          BRAINTRUST_API_KEY: ${{ secrets.BRAINTRUST_API_KEY }}
+          BRAINTRUST_DEFAULT_PROJECT: ${{ inputs.project_name }}
+          CI: "true"
+          FLYWHEEL_AUTONOMOUS: "true"
+
+      # ── Change detection ────────────────────────────────────────────────────
+
+      - name: Detect code changes
+        id: changes
+        run: |
+          PATHS="${{ inputs.code_paths }}"
+          if [ -n "$PATHS" ]; then
+            git add -- $PATHS
+          else
+            git add .
+          fi
+          if git diff --cached --quiet; then
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+          else
+            echo "has_changes=true" >> $GITHUB_OUTPUT
+            git diff --cached --stat
+          fi
+
+      # ── Outputs ─────────────────────────────────────────────────────────────
+
+      - name: Prepare narrative
+        id: narrative
+        if: always()
+        run: |
+          if [ -f bt-flywheel-narrative.md ]; then
+            cp bt-flywheel-narrative.md /tmp/narrative.md
+          elif [ -f bt-flywheel-summary.json ]; then
+            echo "*(Narrative not generated — see bt-flywheel-summary.json artifact)*" > /tmp/narrative.md
+            echo "" >> /tmp/narrative.md
+            cat bt-flywheel-summary.json >> /tmp/narrative.md
+          else
+            echo "No narrative or summary generated." > /tmp/narrative.md
+          fi
+
+      - name: Create pull request
+        if: steps.changes.outputs.has_changes == 'true'
+        run: |
+          DATE=$(date -u +%Y-%m-%d)
+          BRANCH="flywheel/${DATE}-$(date -u +%H%M%S)"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$BRANCH"
+          git commit -m "chore(flywheel): automated agent optimization ${DATE}"
+          git push origin "$BRANCH"
+
+          gh pr create \
+            --title "Flywheel: Agent optimizations (${DATE})" \
+            --body-file /tmp/narrative.md \
+            --base main \
+            --head "$BRANCH"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Write job summary
+        if: always()
+        run: |
+          {
+            if [ "${{ steps.changes.outputs.has_changes }}" = "true" ]; then
+              echo "## Flywheel Run — Changes Made"
+              echo ""
+              echo "A pull request has been opened with the proposed optimizations."
+            else
+              echo "## Flywheel Run — No Changes Recommended"
+            fi
+            echo ""
+            cat /tmp/narrative.md 2>/dev/null || echo "No narrative generated."
+          } >> $GITHUB_STEP_SUMMARY
+
+      - name: Upload run artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: flywheel-${{ github.run_id }}
+          path: |
+            bt-flywheel-summary.json
+            bt-flywheel-narrative.md
+            flywheel-output.log
+          if-no-files-found: ignore
+          retention-days: 30

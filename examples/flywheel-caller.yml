@@ -1,0 +1,79 @@
+# Example: calling the bt-flywheel reusable workflow from your repo.
+#
+# Copy this to .github/workflows/flywheel.yml in your project and fill in
+# the inputs below. The only required secrets are ANTHROPIC_API_KEY and
+# BRAINTRUST_API_KEY — pass any others through extra_env.
+#
+# The workflow:
+#   1. (Optional) Sets up your language runtime and installs dependencies
+#   2. Installs Claude Code CLI and Braintrust CLI
+#   3. Downloads the bt-flywheel skill into .claude/skills/
+#   4. Runs the flywheel optimization cycle via Claude Code
+#   5. If agent code changed: opens a PR with the narrative as the body
+#   6. Always: writes a job summary and uploads run artifacts
+
+name: Agent Flywheel
+
+on:
+  workflow_dispatch:          # run manually from the Actions tab
+  schedule:
+    - cron: "0 0 * * *"       # midnight UTC daily — adjust to taste
+
+jobs:
+  flywheel:
+    uses: dpguthrie/flywheel-plugin/.github/workflows/bt-flywheel.yml@main
+
+    with:
+      # ── Required ────────────────────────────────────────────────────────────
+
+      project_name: my-braintrust-project   # Braintrust project name
+
+      # Describe your agent so the flywheel knows what it's improving.
+      # Include: architecture, eval file paths, key metrics, where code lives.
+      system_context: |
+        This is a [your agent description here].
+
+        ## Key metrics
+        [Metric 1], [Metric 2]
+
+        ## Where things live
+        - Eval files: evals/eval_agent.py
+        - Agent code: src/agent.py
+        - Scorers: scorers.py
+
+      # ── Recommended ─────────────────────────────────────────────────────────
+
+      # Paths to watch for changes — only these are staged and committed.
+      # Without this, `git add .` is used (respects .gitignore).
+      code_paths: src/ evals/ scorers.py
+
+      # Additional env vars written to .env before the flywheel runs.
+      # Put non-standard API keys and project config here.
+      # Values from ${{ secrets.* }} are masked in GitHub Actions logs.
+      extra_env: |
+        OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}
+        BRAINTRUST_GATEWAY_URL=https://gateway.braintrust.dev
+        BRAINTRUST_GATEWAY_BASE_URL=https://gateway.braintrust.dev/v1
+
+      # ── Optional: Python project ─────────────────────────────────────────────
+
+      # Uncomment if your evals or agent code need a Python runtime:
+      # setup_python: true
+      # python_version: "3.12"
+      # python_install_cmd: uv sync   # or: pip install -r requirements.txt
+
+      # ── Optional: Node.js project ───────────────────────────────────────────
+
+      # Uncomment if your evals are TypeScript/JavaScript:
+      # setup_node: true
+      # node_version: "20"
+      # node_install_cmd: npm install
+
+      # ── Optional tuning ──────────────────────────────────────────────────────
+
+      # timeout_minutes: 90   # increase for large eval suites
+
+    # Pass secrets through. ANTHROPIC_API_KEY and BRAINTRUST_API_KEY are
+    # required. Any other secrets you referenced in extra_env above are also
+    # automatically forwarded via `secrets: inherit`.
+    secrets: inherit
