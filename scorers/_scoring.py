@@ -76,7 +76,8 @@ def _extract_summary_text(spans: list) -> str | None:
 def score_evidence_before_change(spans: list) -> dict:
     """Each code edit should be preceded by bt sql or bt view evidence gathering."""
     names = [_span_name(s) for s in spans]
-    evidence_re = re.compile(r"^Bash:.*\b(bt sql|bt view)\b", re.IGNORECASE)
+    # Claude Code logs tool calls as "Terminal:" in span names (metadata.tool_name="Bash")
+    evidence_re = re.compile(r"^(Bash|Terminal):.*\b(bt sql|bt view)\b", re.IGNORECASE)
 
     edit_indices = [i for i, n in enumerate(names) if _edit_re.search(n)]
     if not edit_indices:
@@ -101,7 +102,7 @@ def score_smoke_test_discipline(spans: list) -> dict:
         s
         for s in spans
         if re.search(r"braintrust eval|bt eval", _span_name(s), re.IGNORECASE)
-        and _span_name(s).startswith("Bash:")
+        and re.match(r"^(Bash|Terminal):", _span_name(s))
     ]
     if not eval_spans:
         return {"score": 1.0, "metadata": {"eval_runs": 0}}
@@ -139,7 +140,7 @@ def score_run_efficiency(spans: list) -> dict:
     )
     seen, duplicates, auth_calls = set(), 0, 0
     for s in spans:
-        if not _span_name(s).startswith("Bash:"):
+        if not re.match(r"^(Bash|Terminal):", _span_name(s)):
             continue
         cmd = _span_input(s).get("command", "")
         key = re.sub(r"\s+", " ", cmd.strip().lower())

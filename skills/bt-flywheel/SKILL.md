@@ -1,11 +1,11 @@
 ---
 name: bt-flywheel
-description: Guide the full Braintrust agent improvement flywheel — mine production for insights, curate datasets and scorers, iterate on agent code, run evals, and route intelligently based on findings. Use when improving an AI agent built on Braintrust. Works in interactive dev sessions, CI pipelines, and scheduled/cron contexts.
+description: Use when improving an AI agent built on Braintrust — starting a dev session, running a CI/eval pipeline, on a scheduled cadence, after a deployment, or when production scores have degraded.
 ---
 
 # Braintrust Agent Improvement Flywheel
 
-A structured workflow for continuously improving an AI agent using Braintrust: mine production traces for insights → diagnose what needs to change → curate datasets and scorers → update agent code → run evals → analyze results → route back to the right phase.
+Eight-phase cycle: Orient → Discover → Diagnose → Curate → Iterate → Eval → Analyze → Loop.
 
 ## When to Use
 
@@ -35,6 +35,8 @@ Load these when executing the relevant phase:
 - `references/bt-functions-patterns.md` — scorer/prompt/dataset read-write patterns
 - `references/bt-sync-patterns.md` — bulk log/experiment/dataset sync (pull/push)
 - `references/bt-topics-patterns.md` — Topics automation (input clustering, classification)
+- `references/bt-curate-patterns.py` — ground truth labeling, split assignment, dataset insert
+- `references/bt-flywheel-output-templates.md` — `bt-flywheel-summary.json` and `bt-flywheel-narrative.md` templates
 
 ---
 
@@ -116,14 +118,9 @@ bt sql "SELECT * FROM project_logs('<PROJECT_ID>') WHERE is_root = true AND crea
 bt sql "SELECT * FROM project_logs('<PROJECT_ID>') WHERE is_root = true AND created >= NOW() - INTERVAL 30 day LIMIT 1"
 ```
 
-Inspect the returned row to identify:
-- `scores.*` columns — these are your `<SCORE_COL>` values
-- `facets.*` columns — these are your `<FACET_COL>` values
-- Any other metadata fields
+Inspect the returned row to identify `scores.*` and `facets.*` column names. Null values for nested fields still reveal the column name structure.
 
-Null values for nested fields still reveal the column name structure.
-
-If no rows are found after 30 days: note this ("project has no production traffic in the last 30 days") and proceed with generic queries.
+If no rows found after 30 days: note this and proceed with generic queries.
 
 Store all discovered column names and the resolved project ID for use in subsequent phases.
 
@@ -134,11 +131,9 @@ bt status --json
 # Returns: { "org": "<org-name>", ... }
 ```
 
-Store the org name. Braintrust URLs follow this pattern (URL-encode spaces in org/project names as `%20`):
+Braintrust URLs (URL-encode spaces as `%20`):
 - Experiment: `https://www.braintrust.dev/app/<org>/p/<project-name>/experiments/<experiment-id>`
 - Trace: `https://www.braintrust.dev/app/<org>/p/<project-name>/r/<trace-id>`
-
-These links will be embedded in the summary and narrative outputs.
 
 ---
 
@@ -154,11 +149,11 @@ Load `references/bt-sql-patterns.md`. Run each discovery query, substituting `<P
 
 **Step 3 — High latency:** Find traces where `metrics.duration_ms > 10000`.
 
-**Step 4 — Score distribution:** GROUP BY score value to detect bimodal distributions. A distribution stuck at 0 or 1 (all traces scoring the same) strongly suggests the scorer is broken or its criteria are misaligned.
+**Step 4 — Score distribution:** GROUP BY score value to detect bimodal distributions. A distribution stuck at 0 or 1 strongly suggests the scorer is broken or its criteria are misaligned.
 
-**Step 5 — Facet distribution** (if facets discovered): GROUP BY facet column to understand input topic coverage and spot underrepresented categories. Alternatively, load `references/bt-topics-patterns.md` and use `bt topics status --full` to get Topics automation's clustering view of production inputs.
+**Step 5 — Facet distribution** (if facets discovered): GROUP BY facet column to understand input topic coverage and spot underrepresented categories. Alternatively, load `references/bt-topics-patterns.md` and use `bt topics status --full` for Topics automation's clustering view.
 
-**Step 6 — Drill into interesting traces:** For any trace IDs surfaced by the SQL queries that look worth investigating, load `references/bt-view-patterns.md` and use `bt view trace` to inspect the full span tree.
+**Step 6 — Drill into interesting traces:** Load `references/bt-view-patterns.md` and use `bt view trace` to inspect the full span tree for any trace IDs worth investigating.
 
 **Step 7 — Pull baseline experiment context:** Read recent rows from the baseline experiment to understand what inputs evals are currently testing vs. what's in production:
 ```bash
@@ -182,30 +177,28 @@ DISCOVER FINDINGS:
 
 Synthesize Discover findings and determine what needs to change. This is the routing intelligence of the flywheel — reason carefully before producing an action plan.
 
-Work through each question:
-
 **Is this a scorer problem?**
 - Signs: production shows behaviors that should score badly but score well (or vice versa)
 - Signs: bimodal score distribution found in Discover (all 0s or all 1s)
-- Signs: scorer criteria reference agent behaviors the agent no longer exhibits (e.g., old output format)
+- Signs: scorer criteria reference agent behaviors the agent no longer exhibits
 
 **Is this a dataset gap?**
 - Signs: failure modes or edge cases from production don't appear in existing dataset examples
-- Signs: input patterns in production (topic clusters, edge cases) not represented in evals
+- Signs: input patterns in production not represented in evals
 
 **Is this an agent problem?**
 - Signs: agent behaves incorrectly on inputs that datasets and scorers already cover well
 - Signs: clear behavioral error (wrong tool call, unexpected refusal, wrong output format, hallucinated tool)
 
 **Is this a structural change needed?**
-- Signs: the agent was recently changed significantly (new tools added, output format changed, trajectory restructured)
+- Signs: the agent was recently changed significantly (new tools, output format, trajectory restructured)
 - Signs: both datasets AND scorers need updating to match the new agent interface
 
 **Nothing actionable?**
 - Signs: production looks healthy, scores are good, no anomalies, no coverage gaps
-- Action: report healthy status and **exit the flywheel**. Do not proceed to Curate or Iterate. In autonomous mode, write healthy status to `bt-flywheel-summary.json` before exiting.
+- Action: report healthy status and **exit the flywheel**. In autonomous mode, write healthy status to `bt-flywheel-summary.json` before exiting.
 
-Produce a prioritized action plan listing which artifacts to change and in what order. Multiple conditions can apply simultaneously — list them in priority order and execute them sequentially.
+Produce a prioritized action plan listing which artifacts to change and in what order. Multiple conditions can apply — list them in priority order and execute sequentially.
 
 **In interactive mode**: Present the action plan with reasoning. Wait for confirmation or override before proceeding. Honor any steps the user wants to skip.
 
@@ -221,27 +214,66 @@ Execute dataset and scorer changes identified in the Diagnose plan.
 
 Load `references/bt-sql-patterns.md` if you need to inspect existing dataset content.
 
-To add examples from production traces:
-1. Retrieve the trace content: `bt view trace --object-ref project_logs:<project-id> --trace-id <id> --json`
-2. Extract the relevant `input` and `expected` output from the span tree
-3. Tag the example descriptively (e.g., `["production", "edge-case", "routing-failure"]`)
-4. Insert via Python SDK:
+#### Step 1 — Collect candidates (balanced)
 
-```python
-import braintrust, os
-braintrust.login(api_key=os.getenv("BRAINTRUST_API_KEY"))
-dataset = braintrust.init_dataset(project="<project-name>", name="<dataset-name>")
-dataset.insert({"input": ..., "expected": ..., "tags": [...]})
+Pull both failing *and* passing examples so the dataset doesn't skew toward hard cases only.
+
+```bash
+# Failing examples (low scores or errors)
+bt sql "SELECT id, input, output, scores.\"<SCORE_COL>\" FROM project_logs('<PROJECT_ID>')
+        WHERE scores.\"<SCORE_COL>\" <= 0.5 AND created >= NOW() - INTERVAL 7 day
+        ORDER BY RANDOM() LIMIT 50"
+
+# Passing examples (same time window)
+bt sql "SELECT id, input, output, scores.\"<SCORE_COL>\" FROM project_logs('<PROJECT_ID>')
+        WHERE scores.\"<SCORE_COL>\" >= 0.8 AND created >= NOW() - INTERVAL 7 day
+        ORDER BY RANDOM() LIMIT 50"
 ```
 
-Use the project name from `CLAUDE.md` or as confirmed in Phase 1 Orient. Use the dataset name from Discover findings or ask the user (in interactive mode).
+Target roughly 1:1 ratio. If passing examples are scarce (e.g. bimodal scorer issue), proceed with whatever is available.
 
-If the agent's interface changed structurally (new tool calls, new output format, trajectory changes), update existing dataset rows to use the new format — otherwise evals will fail for the wrong reasons.
+#### Step 2 — Inspect traces and extract inputs
 
-To inspect existing dataset content, use `bt sql`:
+For each candidate trace ID, retrieve the full span tree to get the actual agent input:
+
+```bash
+bt view trace --object-ref project_logs:<project-id> --trace-id <id> --json
+```
+
+Extract the root span's `input` field — not the agent's output, which may be wrong.
+
+#### Step 3 — Auto-label ground truth
+
+**Do not use the production output as `expected`** for failing examples. Use an LLM judge to generate correct expected values. Load `references/bt-curate-patterns.py` for the `generate_ground_truth` function (uses `gpt-4o`).
+
+For passing examples where the production output looks correct, you may use it directly as `expected` — but spot-check a few first.
+
+**In interactive mode**: Show a sample of generated ground truth labels before inserting. Ask for confirmation or spot corrections.
+
+**In autonomous mode**: Log the labeler model used and insert without confirmation.
+
+#### Step 4 — Assign train/validation splits
+
+Use deterministic split assignment so the same row always lands in the same split across iterations. Load `references/bt-curate-patterns.py` for the `assign_split` function (SHA-256 hash of `seed:row_id`, 80/20 split).
+
+#### Step 5 — Insert with metadata
+
+Tag and insert each row with split and provenance metadata. Load `references/bt-curate-patterns.py` for the full insert pattern including the `bucket`, `split`, `source_trace_id`, and `flywheel_iteration` metadata fields.
+
+`bucket` is `"failing"` for low-score/error examples, `"passing"` for high-score examples.
+
+#### Step 6 — Scope evals to validation split
+
+Once rows have split metadata, scope Phase 6 Eval to the validation split. Load `references/bt-curate-patterns.py` for the filter snippet. Use the train split for smoke runs and iterative tuning; validation only for the final measurement.
+
+---
+
+**Existing dataset updates** (structural changes): If the agent's interface changed, update stale dataset rows to use the new format — otherwise evals fail for the wrong reasons. Inspect current rows first:
+
 ```bash
 bt sql "SELECT * FROM dataset('<dataset-id>') LIMIT 20"
 ```
+
 There is no `bt datasets` CLI command — use the Python SDK for writes and `bt sql` for reads.
 
 ### Updating Scorers
@@ -254,7 +286,7 @@ If scorer lives in Braintrust:
 3. Make targeted changes — only fix what Diagnose identified
 4. Push update: `bt functions push -p <project-name> --file <path>`
 
-If scorer lives in the codebase: edit the scorer file directly. Changes should be minimal and targeted — only update what's actually wrong.
+If scorer lives in the codebase: edit the scorer file directly. Changes should be minimal and targeted.
 
 **In interactive mode**: Present planned changes. Wait for confirmation before any writes.
 
@@ -293,37 +325,34 @@ Load `references/bt-eval-patterns.md`.
 2. Search: `find . -name "eval_*.py" -o -name "eval_*.ts" | grep -v node_modules | grep -v .venv`
 3. Check for `evals/` directory: `ls evals/ 2>/dev/null`
 
-**Run a smoke test first** (recommended before full eval during iteration — check `bt eval --help` to confirm `--first` is available in your version):
+**Split scoping**: If the dataset has `split` metadata, run smoke tests against `train` and full evals against `validation`.
+
+**Run a smoke test first** (check `bt eval --help` to confirm `--first` is available):
 
 ```bash
 set -a && source .env && set +a
 bt eval --first 20 <eval_file>
 ```
 
-If smoke run shows near-zero scores (catastrophic failure): stop, do not run full eval. Go back to Phase 4 (Curate) or Phase 5 (Iterate) — something is fundamentally broken.
+If smoke run shows near-zero scores: stop. Go back to Phase 4 or Phase 5 — something is fundamentally broken.
 
 **Run full eval:**
 
 ```bash
-# Source .env (if not already sourced from smoke run)
 set -a && source .env && set +a
 bt eval <eval_file>
 # If bt eval fails, fall back to:
 braintrust eval --env-file .env <eval_file>
 ```
 
-**Capture the experiment ID and URL** from `bt eval` output — the ID is printed on completion and is required for Phase 7. Immediately construct the experiment URL using the pattern resolved in Phase 1 Orient and store it alongside the ID:
+**Capture the experiment ID and URL** from `bt eval` output — required for Phase 7:
 ```
 experiment_url = https://www.braintrust.dev/app/<org>/p/<project-name>/experiments/<experiment-id>
 ```
 
-**In interactive mode**: Present the eval command. Ask:
-- "Run smoke run first?" → run `--first 20` first (if available in your `bt` version)
-- "Run full eval?" → run full eval
-- "Run and don't ask again?" → run full eval and suppress further eval gates this session
-- "Skip?" → skip eval this iteration
+**In interactive mode**: Ask — smoke run first? full eval? run and don't ask again? skip?
 
-**In autonomous mode**: Always run smoke first. If smoke passes (non-catastrophic), run full eval.
+**In autonomous mode**: Always run smoke first. If smoke passes, run full eval.
 
 ---
 
@@ -332,8 +361,6 @@ experiment_url = https://www.braintrust.dev/app/<org>/p/<project-name>/experimen
 Compare the new experiment to the baseline.
 
 Load `references/bt-sql-patterns.md` for experiment query templates and `references/bt-view-patterns.md` for trace drill-in commands.
-
-Run these queries (replacing experiment IDs and column names):
 
 **Step 1 — Score statistics for both experiments:**
 ```bash
@@ -357,7 +384,6 @@ bt view trace --object-ref project_logs:<project-id> --trace-id <id> --json
 # If not found via project_logs, try the experiment object ref:
 bt view trace --object-ref experiment:<experiment-id> --trace-id <id> --json
 ```
-Construct the trace URL: `https://www.braintrust.dev/app/<org>/p/<project-name>/r/<trace-id>` — include this in the verdict even if the span fetch fails.
 
 **Compile verdict:**
 ```
@@ -365,7 +391,6 @@ ANALYZE VERDICT:
 - <SCORE_COL>: baseline avg=X → new avg=Y (delta: Z)
 - Experiment: <url>
 - Regressions: N rows scoring < 0.5
-  - <trace-id>: score=X — <url>
   - <trace-id>: score=X — <url>
 - Scorer health: [normal distribution / bimodal — possible scorer issue]
 - New failure patterns: [describe if any]
@@ -382,84 +407,17 @@ Route based on the Analyze verdict. When multiple conditions apply, address them
 |---|---|
 | Scorer distribution stuck at 0/1 or clearly wrong | → Phase 4: Curate (scorer fix — highest priority) |
 | New failure pattern emerged, not in datasets | → Phase 2: Discover (focused) → Phase 4: Curate |
+| Metric improved on validation but not on train | → Phase 4: Curate (expand training set — likely overfitting) |
 | Metric didn't move despite agent change | → Phase 5: Iterate (find a different fix) |
 | Metric improved AND new edge cases found in eval | → Phase 4: Curate (add new cases) → re-run Phase 6: Eval |
 | Datasets don't cover cases found in eval | → Phase 4: Curate (dataset additions) → re-run Phase 6: Eval |
-| Metric improved, no regressions, scorers healthy | **Exit** — set new experiment as baseline (update `FLYWHEEL_BASELINE_EXPERIMENT` env var or note the new baseline ID for the user), write summary, exit |
+| Metric improved, no regressions, scorers healthy | **Exit** — set new experiment as baseline, write summary, exit |
 
-**In interactive mode**: Present the routing decision and reasoning. Allow the user to override the routing or stop the session.
+**In interactive mode**: Present the routing decision and reasoning. Allow the user to override or stop.
 
-**In autonomous mode**: Route automatically and log the decision. Then write `bt-flywheel-summary.json` to the working directory root:
+**In autonomous mode**: Route automatically and log the decision. Write `bt-flywheel-summary.json` and `bt-flywheel-narrative.md` to the working directory root — see `references/bt-flywheel-output-templates.md` for both schemas.
 
-**Max iterations:** If the metric has not improved after 3 full loop iterations, exit with `loop_decision: "no-convergence"` and surface the findings to the user — do not loop indefinitely.
-
-```json
-{
-  "timestamp": "<ISO8601>",
-  "goal": "<goal or 'general health check'>",
-  "phases_run": ["<phase-name>", ...],
-  "findings": ["<finding 1>", "<finding 2>"],
-  "changes": {
-    "agent": ["<description>"],
-    "scorers": ["<description>"],
-    "datasets": ["<description>"]
-  },
-  "experiment": {
-    "new": "<experiment-id>",
-    "new_url": "https://www.braintrust.dev/app/<org>/p/<project>/experiments/<experiment-id>",
-    "baseline": "<experiment-id>",
-    "baseline_url": "https://www.braintrust.dev/app/<org>/p/<project>/experiments/<baseline-id>",
-    "metric_delta": { "<SCORE_COL>": 0.05 }
-  },
-  "regressions": [
-    {
-      "trace_id": "<trace-id>",
-      "score": 0.0,
-      "url": "https://www.braintrust.dev/app/<org>/p/<project>/r/<trace-id>"
-    }
-  ],
-  "loop_decision": "<done | re-discover | re-curate | re-iterate>",
-  "loop_reasoning": "<reasoning>"
-}
-```
-
----
-
-## CI Narrative (autonomous mode only)
-
-After writing `bt-flywheel-summary.json`, write a second file `bt-flywheel-narrative.md` to the working directory. This file is consumed by CI to populate a GitHub PR description (if changes were made) or job summary (if nothing changed). Write it while you still have full context — do not summarize from the JSON.
-
-**If changes were made**, structure the narrative as a GitHub PR body:
-
-```
-## Flywheel Optimization Run
-
-> Auto-generated by the bt-flywheel self-improvement cycle.
-
-### What Changed
-[List each change with the specific file/component modified]
-
-### Why These Changes
-[Cite the actual production evidence that drove each change: SQL query results,
-specific score values, trace IDs with Braintrust links, failure patterns observed]
-
-### Score Impact
-[Before/after comparison from Phase 7 Analyze — use actual numbers and link to both experiments]
-
-| | Baseline | New |
-|---|---|---|
-| Experiment | [<baseline-id>](<baseline_url>) | [<new-id>](<new_url>) |
-| <SCORE_COL> avg | X | Y |
-| Regressions | — | [<trace-id>](<url>), ... |
-
-### Reviewer Checklist
-- [ ] Score improvements are genuine (not overfitting to the eval dataset)
-- [ ] No regressions in non-targeted metrics
-- [ ] Dataset additions reflect real production failure patterns
-- [ ] Agent/prompt changes are intentional and appropriately scoped
-```
-
-**If no changes were made**, write a concise summary of what was found and why no action was taken — cite specific numbers and whether production is healthy or needs human attention.
+**Max iterations:** If the metric has not improved after 3 full loop iterations, exit with `loop_decision: "no-convergence"` — do not loop indefinitely.
 
 ---
 
