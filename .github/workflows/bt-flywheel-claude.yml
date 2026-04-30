@@ -6,7 +6,7 @@ name: Braintrust Flywheel Claude
 #
 #   jobs:
 #     flywheel:
-#       uses: dpguthrie/flywheel-plugin/.github/workflows/bt-flywheel-claude.yml@main
+#       uses: dpguthrie/braintrust-flywheel-plugin/.github/workflows/bt-flywheel-claude.yml@main
 #       with:
 #         project_name: my-project
 #         system_context: |
@@ -124,6 +124,10 @@ on:
         required: true
       BRAINTRUST_API_KEY:
         required: true
+      OPENAI_API_KEY:
+        required: false
+      TAVILY_API_KEY:
+        required: false
 
 jobs:
   flywheel:
@@ -181,7 +185,7 @@ jobs:
 
       - name: Install bt-flywheel plugin skill
         run: |
-          BASE="https://raw.githubusercontent.com/dpguthrie/flywheel-plugin/main/skills/bt-flywheel"
+          BASE="https://raw.githubusercontent.com/dpguthrie/braintrust-flywheel-plugin/main/skills/bt-flywheel"
           mkdir -p .claude/skills/bt-flywheel/references .claude/skills/bt-flywheel/scripts
           curl -fsSL "${BASE}/SKILL.md" -o .claude/skills/bt-flywheel/SKILL.md
           for f in bt-eval-patterns bt-flywheel-output-templates bt-functions-patterns bt-sql-patterns bt-sync-patterns bt-topics-patterns bt-view-patterns; do
@@ -198,6 +202,8 @@ jobs:
           cat >> .env << 'EOF'
           ANTHROPIC_API_KEY=${{ secrets.ANTHROPIC_API_KEY }}
           BRAINTRUST_API_KEY=${{ secrets.BRAINTRUST_API_KEY }}
+          OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}
+          TAVILY_API_KEY=${{ secrets.TAVILY_API_KEY }}
           BRAINTRUST_DEFAULT_PROJECT=${{ inputs.project_name }}
           ${{ inputs.extra_env }}
           EOF
@@ -223,6 +229,8 @@ jobs:
             deployment gate, rollback, labeling, rerun, or webhook action.
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           BRAINTRUST_API_KEY: ${{ secrets.BRAINTRUST_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          TAVILY_API_KEY: ${{ secrets.TAVILY_API_KEY }}
           BRAINTRUST_DEFAULT_PROJECT: ${{ inputs.project_name }}
           CI: "true"
           FLYWHEEL_AUTONOMOUS: "true"
