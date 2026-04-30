@@ -15,7 +15,7 @@ The flywheel guides you through an 8-phase improvement loop:
 7. **Analyze** — Compare new vs baseline experiment
 8. **Loop** — Route back to the right phase, or exit when improved
 
-On exit, the skill writes evidence-backed Act recommendations (`pull_request`, `issue`, `slack`, `jira`, `linear`, or `none`) into `bt-flywheel-summary.json`. The calling workflow decides which side effects to execute.
+On exit, the skill writes evidence-backed Act recommendations into `bt-flywheel-summary.json`. Common action types include `pull_request`, `pr_comment`, `issue`, `slack`, `jira`, `linear`, `deployment_gate`, `rollback`, `labeling_task`, `rerun_later`, `webhook`, and `none`. The calling workflow decides which side effects to execute.
 
 Works in interactive dev sessions, CI pipelines, scheduled/cron contexts, post-deploy checks, incident follow-up, and other agent harnesses.
 
@@ -42,6 +42,7 @@ The skill should not depend on a specific coding agent. Agent-specific files suc
 | Claude Code GitHub Action | Maintained example | Concrete runner harness, not the product boundary |
 | Codex / Cursor / OpenCode examples | Templates | Use as starting points; adapt to each runner's current CLI/auth model |
 | Slack / Jira / Linear | Recommendation only | The skill emits `recommended_actions`; downstream harnesses execute them |
+| Webhooks | Recommendation only | Use `type: "webhook"` plus `webhook_url_env`; downstream harnesses own secrets and delivery |
 | Online flywheel scorers | Best-effort portable | Assumes trace spans expose shell/edit/write events with names similar to `Bash`, `Terminal`, `Edit`, or `Write` |
 
 ## Install
@@ -104,7 +105,7 @@ Required secrets in your repo: `ANTHROPIC_API_KEY` (to run Claude Code), `BRAINT
 
 If your agent calls a third-party LLM directly (OpenAI, Gemini, etc.), pass its key via `extra_env` — the flywheel itself doesn't need it.
 
-Set `code_paths` explicitly. If it is omitted, the workflow does not stage files or open a PR; this avoids accidentally committing generated summaries, logs, downloaded skills, or unrelated files. `act_mode: auto` honors the skill's `recommended_actions`; use `pr`, `issue`, `summary`, or `none` to force a policy.
+Set `code_paths` explicitly. If it is omitted, the workflow does not stage files or open a PR; this avoids accidentally committing generated summaries, logs, downloaded skills, or unrelated files. `act_mode: auto` honors GitHub-executable `recommended_actions` (`pull_request` and `issue`); use `pr`, `issue`, `summary`, or `none` to force a policy. Other action types are surfaced in the summary/artifacts for a downstream harness.
 
 See [`examples/flywheel-caller.yml`](examples/flywheel-caller.yml) for the full annotated Claude Code example. For other coding agents, use the portable templates in [`examples/integrations.md`](examples/integrations.md): the common parts are installing Braintrust, making `skills/bt-flywheel` available, invoking the agent, and consuming the two output artifacts.
 
@@ -206,6 +207,7 @@ Tests whether the LLM judge correctly rates flywheel behavior against synthetic 
 | `no-convergence` | 3 iterations, no improvement → graceful exit | A/B |
 | `act-pr` | Code change with passing evals → recommends PR | A/B |
 | `act-issue` | Human follow-up needed → recommends issue | A/B |
+| `act-webhook` | External release gate → recommends blocking webhook | A/B |
 | `act-none` | Healthy system → recommends no action | A/B |
 | `unnecessary-changes` | Healthy system → made changes anyway | C/D |
 | `wrong-diagnosis` | Bimodal scorer → tried to fix agent code | C/D |

@@ -323,6 +323,10 @@ _DATASET = [
                 "recommended_actions": [
                     {
                         "type": "pull_request",
+                        "intent": "propose_change",
+                        "target": "github_pr",
+                        "severity": "info",
+                        "blocking": False,
                         "reason": "Code changed and evals passed with no blocking regressions.",
                         "title": "Flywheel: Improve math query handling",
                         "body_markdown": "Trace evidence showed low math scores; eval improved +0.09.",
@@ -355,6 +359,10 @@ _DATASET = [
                 "recommended_actions": [
                     {
                         "type": "issue",
+                        "intent": "label_data",
+                        "target": "github_issue",
+                        "severity": "warning",
+                        "blocking": False,
                         "reason": "Actionable follow-up exists but no safe automated code change was made.",
                         "title": "Flywheel: Label low-score support traces",
                         "body_markdown": "27 low-score traces need human labels before curation.",
@@ -384,6 +392,10 @@ _DATASET = [
                 "recommended_actions": [
                     {
                         "type": "none",
+                        "intent": "no_action",
+                        "target": "none",
+                        "severity": "info",
+                        "blocking": False,
                         "reason": "No follow-up needed.",
                         "title": "Flywheel: No action needed",
                         "body_markdown": "Production is healthy; no changes or tickets recommended.",
@@ -395,6 +407,49 @@ _DATASET = [
             },
         },
         "expected": "A or B: healthy system should recommend no downstream action",
+    },
+    {
+        "input": {
+            "tags": ["positive", "act-webhook"],
+            "expected_action_types": ["webhook"],
+            "scenario": (
+                "A post-deploy check found critical regressions. The owning team routes "
+                "release gates through an internal webhook rather than GitHub Issues."
+            ),
+            "summary": {
+                "goal": "post-deploy verification",
+                "phases_run": ["orient", "discover", "eval", "analyze", "loop"],
+                "findings": ["7 validation regressions after deploy, including trace-900"],
+                "changes": {"agent": [], "scorers": [], "datasets": []},
+                "experiment": {"metric_delta": {"combined-score": -0.18}},
+                "regressions": [
+                    {
+                        "trace_id": "trace-900",
+                        "score": 0.0,
+                        "url": "https://www.braintrust.dev/app/org/p/proj/r/trace-900",
+                    }
+                ],
+                "loop_decision": "re-iterate",
+                "loop_reasoning": "Critical regressions mean the deploy should be blocked.",
+                "recommended_actions": [
+                    {
+                        "type": "webhook",
+                        "intent": "block_release",
+                        "target": "webhook",
+                        "severity": "critical",
+                        "blocking": True,
+                        "reason": "External release-gate webhook should block promotion.",
+                        "title": "Flywheel: Critical post-deploy regression",
+                        "body_markdown": "7 regressions found; combined score dropped -0.18.",
+                        "requires_human_review": True,
+                        "evidence": ["https://www.braintrust.dev/app/org/p/proj/r/trace-900"],
+                        "idempotency_key": "bt-flywheel:proj:2026-04-24:webhook:deploy-regression",
+                        "webhook_url_env": "FLYWHEEL_RELEASE_GATE_WEBHOOK_URL",
+                    }
+                ],
+            },
+        },
+        "expected": "A or B: external release-gate routing should use webhook with critical blocking metadata",
     },
 
     # ── Negative examples: concrete failure modes ─────────────────────────────
@@ -682,6 +737,10 @@ def act_recommendation(input, output, expected=None, **kwargs):
 
     required_fields = {
         "type",
+        "intent",
+        "target",
+        "severity",
+        "blocking",
         "reason",
         "title",
         "body_markdown",
@@ -697,9 +756,25 @@ def act_recommendation(input, output, expected=None, **kwargs):
     bad_none_review = [
         action
         for action in actions
-        if action.get("type") == "none" and action.get("requires_human_review") is not False
+        if action.get("type") == "none"
+        and (
+            action.get("requires_human_review") is not False
+            or action.get("intent") != "no_action"
+            or action.get("target") != "none"
+            or action.get("severity") != "info"
+            or action.get("blocking") is not False
+        )
     ]
-    score = 1.0 if not missing and not bad_none_review else 0.5
+    bad_webhooks = [
+        action
+        for action in actions
+        if action.get("type") == "webhook"
+        and (
+            not action.get("webhook_url_env")
+            or str(action.get("webhook_url_env", "")).startswith("http")
+        )
+    ]
+    score = 1.0 if not missing and not bad_none_review and not bad_webhooks else 0.5
     return {
         "score": score,
         "metadata": {
@@ -707,6 +782,7 @@ def act_recommendation(input, output, expected=None, **kwargs):
             "actual": actual_types,
             "missing": missing,
             "bad_none_review_count": len(bad_none_review),
+            "bad_webhook_count": len(bad_webhooks),
         },
     }
 
@@ -714,11 +790,11 @@ def act_recommendation(input, output, expected=None, **kwargs):
 # ─── Eval ─────────────────────────────────────────────────────────────────────
 
 braintrust.Eval(
-    "Flywheel Behavior Quality",
+    _PROJECT,
     data=_DATASET,
     task=task,
     scores=[behavior_quality, regression_handled, act_recommendation],
-    project_name=_PROJECT,
+    experiment_name="Flywheel Behavior Quality",
     metadata={
         "description": (
             "Evaluates the strategic quality of bt-flywheel run summaries against "

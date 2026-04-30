@@ -96,6 +96,10 @@
         "type": "object",
         "required": [
           "type",
+          "intent",
+          "target",
+          "severity",
+          "blocking",
           "reason",
           "title",
           "body_markdown",
@@ -107,8 +111,54 @@
         "properties": {
           "type": {
             "type": "string",
-            "enum": ["pull_request", "issue", "slack", "jira", "linear", "none"]
+            "enum": [
+              "pull_request",
+              "pr_comment",
+              "issue",
+              "slack",
+              "jira",
+              "linear",
+              "deployment_gate",
+              "rollback",
+              "labeling_task",
+              "rerun_later",
+              "webhook",
+              "none"
+            ]
           },
+          "intent": {
+            "type": "string",
+            "enum": [
+              "propose_change",
+              "investigate",
+              "notify",
+              "block_release",
+              "rollback",
+              "label_data",
+              "rerun",
+              "no_action"
+            ]
+          },
+          "target": {
+            "type": "string",
+            "enum": [
+              "github_pr",
+              "github_issue",
+              "slack",
+              "jira",
+              "linear",
+              "webhook",
+              "ci_status",
+              "scheduler",
+              "labeling_system",
+              "none"
+            ]
+          },
+          "severity": {
+            "type": "string",
+            "enum": ["info", "warning", "critical"]
+          },
+          "blocking": { "type": "boolean" },
           "reason": { "type": "string" },
           "title": { "type": "string" },
           "body_markdown": { "type": "string" },
@@ -117,7 +167,8 @@
             "type": "array",
             "items": { "type": "string" }
           },
-          "idempotency_key": { "type": "string" }
+          "idempotency_key": { "type": "string" },
+          "webhook_url_env": { "type": "string" }
         }
       }
     }

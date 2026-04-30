@@ -162,11 +162,21 @@ Validate the summary when you include this repo's schema in your harness:
 python -m jsonschema schemas/bt-flywheel-summary.schema.json bt-flywheel-summary.json
 ```
 
+Each recommended action includes:
+
+- `type`: concrete action kind, such as `pull_request`, `deployment_gate`, `labeling_task`, or `webhook`.
+- `intent`: policy intent, such as `propose_change`, `investigate`, `block_release`, `rollback`, `label_data`, or `rerun`.
+- `target`: destination class, such as `github_pr`, `ci_status`, `slack`, `jira`, `linear`, `webhook`, or `scheduler`.
+- `severity`: `info`, `warning`, or `critical`.
+- `blocking`: whether the caller should block promotion or require immediate attention.
+
 Typical harness policy:
 
 - Open a PR only when code changed and `recommended_actions` includes `pull_request`.
 - Create an issue/ticket when `recommended_actions` includes `issue`, `jira`, or `linear`.
 - Send Slack only as notification, not as the system of record.
+- Fail or block a deploy when `deployment_gate` or `rollback` has `blocking: true`.
+- Trigger a generic external integration when `type` is `webhook`; read the URL from `webhook_url_env`, never from a raw URL in the summary.
 - Do nothing when the action type is `none`.
 
 ## Non-CI Triggers

@@ -380,11 +380,11 @@ def score_in_range(input, output, expected=None, **kwargs):
 # ─── Eval ─────────────────────────────────────────────────────────────────────
 
 braintrust.Eval(
-    "Scorer Unit Tests",
+    _PROJECT,
     data=_DATASET,
     task=task,
     scores=[score_in_range],
-    project_name=_PROJECT,
+    experiment_name="Scorer Unit Tests",
     metadata={
         "description": (
             "Unit tests for the 4 deterministic bt-flywheel online scorer functions. "

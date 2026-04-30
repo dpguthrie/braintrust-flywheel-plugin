@@ -35,7 +35,11 @@ Validate this file against `schemas/bt-flywheel-summary.schema.json` when the re
   "loop_reasoning": "<reasoning>",
   "recommended_actions": [
     {
-      "type": "<pull_request | issue | slack | jira | linear | none>",
+      "type": "<pull_request | pr_comment | issue | slack | jira | linear | deployment_gate | rollback | labeling_task | rerun_later | webhook | none>",
+      "intent": "<propose_change | investigate | notify | block_release | rollback | label_data | rerun | no_action>",
+      "target": "<github_pr | github_issue | slack | jira | linear | webhook | ci_status | scheduler | labeling_system | none>",
+      "severity": "<info | warning | critical>",
+      "blocking": false,
       "reason": "<why this action is appropriate>",
       "title": "<short human-readable title>",
       "body_markdown": "<action body with evidence, findings, changes, and next steps>",
@@ -44,13 +48,16 @@ Validate this file against `schemas/bt-flywheel-summary.schema.json` when the re
         "https://www.braintrust.dev/app/<org>/p/<project>/experiments/<experiment-id>",
         "https://www.braintrust.dev/app/<org>/p/<project>/r/<trace-id>"
       ],
-      "idempotency_key": "bt-flywheel:<project-name>:<run-date>:<action-type>:<stable-fingerprint>"
+      "idempotency_key": "bt-flywheel:<project-name>:<run-date>:<action-type>:<stable-fingerprint>",
+      "webhook_url_env": "<optional env var name such as FLYWHEEL_WEBHOOK_URL; only for type=webhook>"
     }
   ]
 }
 ```
 
-Use `type: "none"` when no follow-up is needed. For `none`, set `requires_human_review` to `false`, keep `evidence` as any run summary links, and use the title/body to explain why no action is needed.
+Use `type: "none"` when no follow-up is needed. For `none`, set `intent: "no_action"`, `target: "none"`, `severity: "info"`, `blocking: false`, `requires_human_review: false`, keep `evidence` as any run summary links, and use the title/body to explain why no action is needed.
+
+Use `type: "webhook"` when the caller should route to an external system that is not represented by the standard targets. Do not write raw webhook URLs into the summary; write `webhook_url_env` with the environment variable name the caller should read.
 
 ---
 
@@ -87,7 +94,7 @@ trace IDs with Braintrust links, failure patterns observed]
 - [ ] Agent/prompt changes are intentional and appropriately scoped
 
 ### Recommended Actions
-[List the entries from `recommended_actions`: action type, title, reason, whether human review is required, and idempotency key.]
+[List the entries from `recommended_actions`: action type, intent, target, severity, blocking status, title, reason, whether human review is required, and idempotency key.]
 ```
 
 ### If no changes were made

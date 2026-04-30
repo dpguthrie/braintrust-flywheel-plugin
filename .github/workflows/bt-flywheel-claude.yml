@@ -46,8 +46,9 @@ on:
       act_mode:
         description: >
           Follow-up action policy after the flywheel run: auto, pr, issue, summary, or none.
-          auto honors bt-flywheel-summary.json recommended_actions and falls back to a PR
-          only when code_paths produced staged changes.
+          auto honors GitHub-executable bt-flywheel-summary.json recommended_actions
+          (pull_request, issue) and falls back to a PR only when code_paths produced
+          staged changes. Other action types are surfaced in summaries/artifacts.
         required: false
         type: string
         default: "auto"
@@ -218,7 +219,8 @@ jobs:
 
             When complete, ensure bt-flywheel-summary.json and bt-flywheel-narrative.md
             are both written to the working directory, and include recommended_actions in
-            bt-flywheel-summary.json for any downstream PR, issue, Slack, Jira, or Linear action.
+            bt-flywheel-summary.json for any downstream PR, issue, Slack, Jira, Linear,
+            deployment gate, rollback, labeling, rerun, or webhook action.
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           BRAINTRUST_API_KEY: ${{ secrets.BRAINTRUST_API_KEY }}
           BRAINTRUST_DEFAULT_PROJECT: ${{ inputs.project_name }}

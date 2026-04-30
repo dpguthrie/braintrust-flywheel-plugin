@@ -423,7 +423,7 @@ Route based on the Analyze verdict. When multiple conditions apply, address them
 
 ## Act Recommendations
 
-Before exit, choose what a downstream harness should do next. Do not open PRs, create issues, send Slack messages, or create Jira/Linear tickets from the skill itself. The skill owns evidence-backed recommendation; the caller owns side effects, permissions, idempotency, and destination-specific policy.
+Before exit, choose what a downstream harness should do next. Do not open PRs, create issues, send Slack messages, create Jira/Linear tickets, call webhooks, block deploys, or trigger rollbacks from the skill itself. The skill owns evidence-backed recommendation; the caller owns side effects, permissions, idempotency, and destination-specific policy.
 
 Add `recommended_actions` to `bt-flywheel-summary.json`. Use `references/bt-flywheel-output-templates.md` for the schema.
 
@@ -431,15 +431,19 @@ Choose actions with these defaults:
 
 | Situation | Recommended action |
 |---|---|
-| Codebase changes were made, eval passed, no blocking regressions | `pull_request` |
-| Codebase changes were made, but regressions or uncertain impact remain | `pull_request` with `requires_human_review: true` |
-| No code changes, but production degradation, dataset gap, scorer issue, setup blocker, or no-convergence needs follow-up | `issue` |
-| Findings need human labeling, product judgment, credentials, or policy approval | `issue` |
-| Urgent degradation or completed autonomous run should notify a team | `slack` as an additional notification action |
-| The downstream team uses Jira or Linear instead of GitHub Issues | `jira` or `linear` instead of `issue` |
-| Production is healthy and no follow-up is needed | `none` |
+| Codebase changes were made, eval passed, no blocking regressions | `pull_request`, intent `propose_change`, target `github_pr` |
+| Running from an existing PR and no new branch is needed | `pr_comment`, intent `notify`, target `github_pr` |
+| No code changes, but production degradation, dataset gap, scorer issue, setup blocker, or no-convergence needs follow-up | `issue`, intent `investigate`, target `github_issue` |
+| Findings need human ground-truth labels before safe curation | `labeling_task`, intent `label_data`, target `github_issue` or team's labeling system |
+| Urgent degradation or completed autonomous run should notify a team | `slack`, intent `notify`, target `slack` |
+| The downstream team uses Jira or Linear instead of GitHub Issues | `jira` or `linear`, intent `investigate`, target `jira` or `linear` |
+| A release/post-deploy check should block promotion due to regressions | `deployment_gate`, intent `block_release`, target `ci_status`, `blocking: true` |
+| Severe degradation should be reverted rather than improved forward | `rollback`, intent `rollback`, target `ci_status` or `github_issue`, `blocking: true` |
+| Evidence is inconclusive due to low traffic, flaky evals, or missing data | `rerun_later`, intent `rerun`, target `ci_status` or scheduler |
+| The caller should route to an arbitrary external system | `webhook`, intent matching the situation, target `webhook` |
+| Production is healthy and no follow-up is needed | `none`, intent `no_action`, target `none` |
 
-Each non-`none` action must include a title, body, reason, evidence links, `requires_human_review`, and an `idempotency_key` stable enough for the caller to deduplicate repeated scheduled runs.
+Each action must include `type`, `intent`, `target`, `severity`, `blocking`, title, body, reason, evidence links, `requires_human_review`, and an `idempotency_key` stable enough for the caller to deduplicate repeated scheduled runs. Include `webhook_url_env` on `webhook` actions instead of a raw URL so secrets stay in the caller environment.
 
 ---
 
