@@ -1,88 +1,266 @@
-# Example: calling the Claude Code bt-flywheel reusable workflow from your repo.
+# Example: self-contained GitHub Actions workflow using the bt-flywheel skill.
 #
-# Copy this to .github/workflows/flywheel.yml in your project and fill in
-# the inputs below. The only required secrets are ANTHROPIC_API_KEY and
-# BRAINTRUST_API_KEY — pass any others through extra_env.
+# Copy this file into your repository as .github/workflows/flywheel.yml and
+# customize the project-specific paths, secrets, and prompt context.
 #
-# The workflow:
-#   1. (Optional) Sets up your language runtime and installs dependencies
-#   2. Installs Claude Code CLI and Braintrust CLI
-#   3. Downloads the bt-flywheel skill into .claude/skills/
-#   4. Runs the flywheel optimization cycle via Claude Code
-#   5. Executes configured follow-up policy: PR, issue, summary only, or none
-#   6. Always: writes a job summary and uploads run artifacts
+# This example does not call a reusable workflow from this repo. It installs the
+# skill into .claude/skills/bt-flywheel, runs Claude Code, then locally decides
+# whether to open selected follow-up actions from bt-flywheel-summary.json.
 
 name: Agent Flywheel
 
 on:
-  workflow_dispatch:          # run manually from the Actions tab
-  schedule:
-    - cron: "0 0 * * *"       # midnight UTC daily — adjust to taste
+  workflow_dispatch:
+  # schedule:
+  #   - cron: "0 0 * * *"  # midnight UTC daily
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
 
 jobs:
   flywheel:
-    uses: dpguthrie/flywheel-plugin/.github/workflows/bt-flywheel-claude.yml@main
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
 
-    with:
-      # ── Required ────────────────────────────────────────────────────────────
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      project_name: my-braintrust-project   # Braintrust project name
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
 
-      # Describe your agent so the flywheel knows what it's improving.
-      # Include: architecture, eval file paths, key metrics, where code lives.
-      system_context: |
-        This is a [your agent description here].
+      - name: Install dependencies
+        run: |
+          # Replace with your project install command.
+          pip install -r requirements.txt
 
-        ## Key metrics
-        [Metric 1], [Metric 2]
+      - name: Install action policy tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y -q jq
 
-        ## Where things live
-        - Eval files: evals/eval_agent.py
-        - Agent code: src/agent.py
-        - Scorers: scorers.py
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
 
-      # ── Recommended ─────────────────────────────────────────────────────────
+      - name: Install Claude Code CLI
+        run: npm install -g @anthropic-ai/claude-code
 
-      # Paths to watch for changes — only these are staged and committed.
-      # If omitted, no files are staged and no PR is opened.
-      code_paths: src/ evals/ scorers.py
+      - name: Install Braintrust CLI
+        run: |
+          curl -fsSL https://bt.dev/cli/install.sh | bash
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
 
-      # Follow-up policy after the run:
-      # auto honors bt-flywheel-summary.json recommended_actions.
-      # Other values: pr, issue, summary, none.
-      act_mode: auto
+      - name: Install bt-flywheel skill
+        run: |
+          mkdir -p .claude/skills
+          curl -fsSL https://github.com/dpguthrie/braintrust-flywheel-plugin/archive/refs/heads/main.tar.gz \
+            | tar -xz --strip-components=2 -C .claude/skills braintrust-flywheel-plugin-main/skills/bt-flywheel
 
-      # Optional PR/issue settings.
-      base_branch: main
-      # issue_labels: flywheel,ai  # labels must already exist in the target repo
+      - name: Write .env for eval invocations
+        run: |
+          cat > .env << 'EOF'
+          ANTHROPIC_API_KEY=${{ secrets.ANTHROPIC_API_KEY }}
+          BRAINTRUST_API_KEY=${{ secrets.BRAINTRUST_API_KEY }}
+          OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}
+          BRAINTRUST_DEFAULT_PROJECT=my-braintrust-project
+          BRAINTRUST_GATEWAY_URL=https://gateway.braintrust.dev
+          BRAINTRUST_GATEWAY_BASE_URL=https://gateway.braintrust.dev/v1
+          EOF
 
-      # Additional env vars written to .env before the flywheel runs.
-      # Put non-standard API keys and project config here.
-      # Values from ${{ secrets.* }} are masked in GitHub Actions logs.
-      extra_env: |
-        OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}
-        BRAINTRUST_GATEWAY_URL=https://gateway.braintrust.dev
-        BRAINTRUST_GATEWAY_BASE_URL=https://gateway.braintrust.dev/v1
+      - name: Run flywheel optimization cycle
+        id: flywheel
+        run: |
+          claude --print --dangerously-skip-permissions \
+            -p "$FLYWHEEL_PROMPT" \
+            2>&1 | tee flywheel-output.log
+        env:
+          FLYWHEEL_PROMPT: |
+            Use the bt-flywheel skill installed at .claude/skills/bt-flywheel/SKILL.md
+            to run the full self-improvement optimization cycle in autonomous CI mode.
 
-      # ── Optional: Python project ─────────────────────────────────────────────
+            ## System context
 
-      # Uncomment if your evals or agent code need a Python runtime:
-      # setup_python: true
-      # python_version: "3.12"
-      # python_install_cmd: uv sync   # or: pip install -r requirements.txt
+            This is a [your agent description here].
 
-      # ── Optional: Node.js project ───────────────────────────────────────────
+            ## Key metrics
 
-      # Uncomment if your evals are TypeScript/JavaScript:
-      # setup_node: true
-      # node_version: "20"
-      # node_install_cmd: npm install
+            [Metric 1], [Metric 2]
 
-      # ── Optional tuning ──────────────────────────────────────────────────────
+            ## Where things live
 
-      # timeout_minutes: 90   # increase for large eval suites
+            - Eval files: evals/eval_agent.py
+            - Agent code: src/agent.py
+            - Scorers: scorers.py
 
-    # Pass secrets through. ANTHROPIC_API_KEY and BRAINTRUST_API_KEY are
-    # required. Any other secrets you referenced in extra_env above are also
-    # automatically forwarded via `secrets: inherit`.
-    secrets: inherit
+            When complete, write bt-flywheel-summary.json and bt-flywheel-narrative.md
+            to the working directory. Do not directly create PRs, issues, Slack messages,
+            Jira tickets, Linear tickets, webhooks, deployment gates, or rollbacks.
+            Put any recommended follow-up in recommended_actions.
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          BRAINTRUST_API_KEY: ${{ secrets.BRAINTRUST_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          BRAINTRUST_DEFAULT_PROJECT: my-braintrust-project
+          BRAINTRUST_GATEWAY_URL: https://gateway.braintrust.dev
+          BRAINTRUST_GATEWAY_BASE_URL: https://gateway.braintrust.dev/v1
+          CI: "true"
+          FLYWHEEL_AUTONOMOUS: "true"
+
+      - name: Detect code changes
+        id: changes
+        run: |
+          git add -- src/ evals/ scorers.py
+          if git diff --cached --quiet; then
+            echo "has_changes=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_changes=true" >> "$GITHUB_OUTPUT"
+            git diff --cached --stat
+          fi
+
+      - name: Prepare narrative
+        id: narrative
+        if: always()
+        run: |
+          if [ -f bt-flywheel-narrative.md ]; then
+            cp bt-flywheel-narrative.md /tmp/narrative.md
+          elif [ -f bt-flywheel-summary.json ]; then
+            echo "*(Narrative not generated - see bt-flywheel-summary.json artifact)*" > /tmp/narrative.md
+            echo "" >> /tmp/narrative.md
+            cat bt-flywheel-summary.json >> /tmp/narrative.md
+          else
+            echo "No narrative or summary generated." > /tmp/narrative.md
+          fi
+
+      - name: Decide follow-up action
+        id: action
+        if: always()
+        run: |
+          SUMMARY="bt-flywheel-summary.json"
+          RECOMMENDED_TYPES=""
+          PRIMARY_PR_TITLE=""
+          PRIMARY_ISSUE_TITLE=""
+          ISSUE_IDEMPOTENCY_KEY=""
+
+          sanitize_title() {
+            printf "%s" "$1" | tr '\n\r' ' ' | sed 's/[[:space:]][[:space:]]*/ /g' | cut -c1-120
+          }
+
+          if [ -f "$SUMMARY" ]; then
+            RECOMMENDED_TYPES="$(jq -r '[.recommended_actions[]?.type] | join(",")' "$SUMMARY" 2>/dev/null || true)"
+            PRIMARY_PR_TITLE="$(jq -r 'first(.recommended_actions[]? | select(.type == "pull_request") | .title) // empty' "$SUMMARY" 2>/dev/null || true)"
+            PRIMARY_ISSUE_TITLE="$(jq -r 'first(.recommended_actions[]? | select(.type == "issue") | .title) // empty' "$SUMMARY" 2>/dev/null || true)"
+            ISSUE_IDEMPOTENCY_KEY="$(jq -r 'first(.recommended_actions[]? | select(.type == "issue") | .idempotency_key) // empty' "$SUMMARY" 2>/dev/null || true)"
+            jq -r 'first(.recommended_actions[]? | select(.type == "issue") | .body_markdown) // empty' "$SUMMARY" 2>/dev/null > /tmp/recommended-issue.md || true
+          fi
+
+          if [ ! -s /tmp/recommended-issue.md ]; then
+            cp /tmp/narrative.md /tmp/recommended-issue.md
+          fi
+
+          DATE="$(date -u +%Y-%m-%d)"
+          HAS_CHANGES="${{ steps.changes.outputs.has_changes }}"
+          SHOULD_PR="false"
+          SHOULD_ISSUE="false"
+
+          if [ "$HAS_CHANGES" = "true" ] && { [ -z "$RECOMMENDED_TYPES" ] || printf "%s" "$RECOMMENDED_TYPES" | grep -q "pull_request"; }; then
+            SHOULD_PR="true"
+          fi
+          if printf "%s" "$RECOMMENDED_TYPES" | grep -Eq "(^|,)issue(,|$)"; then
+            SHOULD_ISSUE="true"
+          fi
+
+          {
+            echo "should_pr=$SHOULD_PR"
+            echo "should_issue=$SHOULD_ISSUE"
+            echo "pr_title=$(sanitize_title "${PRIMARY_PR_TITLE:-Flywheel: Agent optimizations (${DATE})}")"
+            echo "issue_title=$(sanitize_title "${PRIMARY_ISSUE_TITLE:-Flywheel: Follow-up needed (${DATE})}")"
+            echo "issue_idempotency_key=$ISSUE_IDEMPOTENCY_KEY"
+            echo "recommended_types=$RECOMMENDED_TYPES"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Create pull request
+        if: steps.action.outputs.should_pr == 'true'
+        run: |
+          DATE=$(date -u +%Y-%m-%d)
+          BRANCH="flywheel/${DATE}-${GITHUB_RUN_ID}"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$BRANCH"
+          git commit -m "chore(flywheel): automated agent optimization ${DATE}"
+          git push origin "$BRANCH"
+
+          gh pr create \
+            --title "$PR_TITLE" \
+            --body-file /tmp/narrative.md \
+            --base main \
+            --head "$BRANCH"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_TITLE: ${{ steps.action.outputs.pr_title }}
+
+      - name: Create follow-up issue
+        if: steps.action.outputs.should_issue == 'true'
+        run: |
+          KEY="$ISSUE_IDEMPOTENCY_KEY"
+          if [ -n "$KEY" ]; then
+            EXISTING="$(gh issue list --state open --search "$KEY in:body" --json number --jq '.[0].number // empty')"
+            if [ -n "$EXISTING" ]; then
+              echo "Open issue #${EXISTING} already contains idempotency key ${KEY}; skipping duplicate."
+              exit 0
+            fi
+            {
+              echo ""
+              echo "<!-- bt-flywheel-idempotency-key: ${KEY} -->"
+            } >> /tmp/recommended-issue.md
+          fi
+
+          gh issue create \
+            --title "$ISSUE_TITLE" \
+            --body-file /tmp/recommended-issue.md
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE_TITLE: ${{ steps.action.outputs.issue_title }}
+          ISSUE_IDEMPOTENCY_KEY: ${{ steps.action.outputs.issue_idempotency_key }}
+
+      - name: Write job summary
+        if: always()
+        env:
+          SHOULD_PR: ${{ steps.action.outputs.should_pr }}
+          SHOULD_ISSUE: ${{ steps.action.outputs.should_issue }}
+          RECOMMENDED_TYPES: ${{ steps.action.outputs.recommended_types }}
+        run: |
+          {
+            if [ "$SHOULD_PR" = "true" ]; then
+              echo "## Flywheel Run - Changes Made"
+              echo ""
+              echo "A pull request has been opened with the proposed optimizations."
+            elif [ "$SHOULD_ISSUE" = "true" ]; then
+              echo "## Flywheel Run - Follow-up Issue Created"
+            else
+              echo "## Flywheel Run - No Follow-up Action Executed"
+            fi
+            echo ""
+            echo "Recommended action types: ${RECOMMENDED_TYPES:-none}"
+            echo ""
+            cat /tmp/narrative.md 2>/dev/null || echo "No narrative generated."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload run artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: flywheel-${{ github.run_id }}
+          path: |
+            bt-flywheel-summary.json
+            bt-flywheel-narrative.md
+            flywheel-output.log
+          if-no-files-found: ignore
+          retention-days: 30

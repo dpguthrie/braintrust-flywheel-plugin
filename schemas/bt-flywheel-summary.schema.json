@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/dpguthrie/flywheel-plugin/schemas/bt-flywheel-summary.schema.json",
+  "$id": "https://github.com/dpguthrie/braintrust-flywheel-plugin/schemas/bt-flywheel-summary.schema.json",
   "title": "bt-flywheel-summary",
   "type": "object",
   "required": [

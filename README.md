@@ -39,7 +39,7 @@ The skill should not depend on a specific coding agent. Agent-specific files suc
 |---|---|---|
 | Core skill in `skills/bt-flywheel/` | Supported | Portable skill contract and Braintrust workflow |
 | Summary schema | Supported | `bt-flywheel-summary.json` output contract |
-| Claude Code GitHub Action | Maintained example | Concrete runner harness, not the product boundary |
+| GitHub Actions examples | Maintained examples | Copy into caller repos; no reusable workflow contract |
 | Codex / Cursor / OpenCode examples | Templates | Use as starting points; adapt to each runner's current CLI/auth model |
 | Slack / Jira / Linear | Recommendation only | The skill emits `recommended_actions`; downstream harnesses execute them |
 | Webhooks | Recommendation only | Use `type: "webhook"` plus `webhook_url_env`; downstream harnesses own secrets and delivery |
@@ -47,12 +47,22 @@ The skill should not depend on a specific coding agent. Agent-specific files suc
 
 ## Install
 
-For any agent or harness, make the skill directory available in your repo or agent skill path:
+Install the whole skill directory, not only `SKILL.md`; the `references/`, `scripts/`, and `agents/` files are part of the skill.
+
+For Codex, use the standard skill installer:
+
+```bash
+python3 ~/.codex/skills/.system/skill-installer/scripts/install-skill-from-github.py \
+  --repo dpguthrie/braintrust-flywheel-plugin \
+  --path skills/bt-flywheel
+```
+
+For project-local CI or another agent harness, copy the full skill directory into the runner's skill path:
 
 ```bash
 mkdir -p .agent-skills
-curl -fsSL https://github.com/dpguthrie/flywheel-plugin/archive/refs/heads/main.tar.gz \
-  | tar -xz --strip-components=2 -C .agent-skills flywheel-plugin-main/skills/bt-flywheel
+curl -fsSL https://github.com/dpguthrie/braintrust-flywheel-plugin/archive/refs/heads/main.tar.gz \
+  | tar -xz --strip-components=2 -C .agent-skills braintrust-flywheel-plugin-main/skills/bt-flywheel
 ```
 
 For Claude Code plugin installs:
@@ -84,28 +94,15 @@ Or ask any coding agent to run the flywheel from the skill path:
 
 ## GitHub Actions
 
-This repo includes one reusable GitHub Actions workflow for Claude Code because it needs a concrete runner. Treat it as a maintained example harness, not the only way to use the skill.
+This repo includes example GitHub Actions workflows you can copy into your own repository. They install the skill and define the runner logic locally; they do not call a reusable workflow from this repo.
 
-Copy `examples/flywheel-caller.yml` to `.github/workflows/flywheel.yml` in your repo and fill in the inputs:
-
-```yaml
-jobs:
-  flywheel:
-    uses: dpguthrie/flywheel-plugin/.github/workflows/bt-flywheel-claude.yml@main
-    with:
-      project_name: my-braintrust-project
-      system_context: |
-        Describe your agent here...
-      code_paths: src/ evals/ scorers.py
-      act_mode: auto
-    secrets: inherit
-```
+Copy `examples/flywheel-caller.yml` to `.github/workflows/flywheel.yml` in your repo and customize the project-specific values, install command, prompt context, and staged paths.
 
 Required secrets in your repo: `ANTHROPIC_API_KEY` (to run Claude Code), `BRAINTRUST_API_KEY`.
 
-If your agent calls a third-party LLM directly (OpenAI, Gemini, etc.), pass its key via `extra_env` — the flywheel itself doesn't need it.
+If your agent calls a third-party LLM directly (OpenAI, Gemini, etc.), include its key in the workflow environment or `.env` the workflow writes for eval invocations.
 
-Set `code_paths` explicitly. If it is omitted, the workflow does not stage files or open a PR; this avoids accidentally committing generated summaries, logs, downloaded skills, or unrelated files. `act_mode: auto` honors GitHub-executable `recommended_actions` (`pull_request` and `issue`); use `pr`, `issue`, `summary`, or `none` to force a policy. Other action types are surfaced in the summary/artifacts for a downstream harness.
+Set staged paths explicitly in the workflow's change-detection step. Avoid `git add .` so generated summaries, logs, downloaded skills, and unrelated changes do not get committed accidentally.
 
 See [`examples/flywheel-caller.yml`](examples/flywheel-caller.yml) for the full annotated Claude Code example. For other coding agents, use the portable templates in [`examples/integrations.md`](examples/integrations.md): the common parts are installing Braintrust, making `skills/bt-flywheel` available, invoking the agent, and consuming the two output artifacts.
 

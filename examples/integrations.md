@@ -26,7 +26,7 @@ Instead, include recommended_actions in bt-flywheel-summary.json.
 
 ## Common GitHub Actions Setup
 
-All runners need the same basic setup:
+All runners need the same basic setup. Install the whole skill directory so bundled references and scripts are available to the coding agent.
 
 ```yaml
 steps:
@@ -37,14 +37,14 @@ steps:
   - name: Install Braintrust CLI
     run: |
       curl -fsSL https://bt.dev/cli/install.sh | bash
-      echo "$HOME/.local/bin" >> $GITHUB_PATH
-      echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+      echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
 
   - name: Install bt-flywheel skill bundle
     run: |
       mkdir -p .agent-skills
-      curl -fsSL https://github.com/dpguthrie/flywheel-plugin/archive/refs/heads/main.tar.gz \
-        | tar -xz --strip-components=2 -C .agent-skills flywheel-plugin-main/skills/bt-flywheel
+      curl -fsSL https://github.com/dpguthrie/braintrust-flywheel-plugin/archive/refs/heads/main.tar.gz \
+        | tar -xz --strip-components=2 -C .agent-skills braintrust-flywheel-plugin-main/skills/bt-flywheel
 
   - name: Write flywheel prompt
     run: |
@@ -66,24 +66,7 @@ steps:
 
 ## Claude Code
 
-Use the reusable workflow in this repo if you want a complete Claude Code harness with PR/issue handling:
-
-```yaml
-jobs:
-  flywheel:
-    uses: dpguthrie/flywheel-plugin/.github/workflows/bt-flywheel-claude.yml@main
-    with:
-      project_name: my-braintrust-project
-      system_context: |
-        Agent code: src/
-        Eval files: evals/eval_agent.py
-        Scorers: scorers.py
-      code_paths: src/ evals/ scorers.py
-      act_mode: auto
-    secrets: inherit
-```
-
-Or invoke Claude Code directly after the common setup:
+Invoke Claude Code directly after the common setup, or copy the full workflow in `examples/flywheel-caller.yml`:
 
 ```yaml
 - name: Run flywheel with Claude Code

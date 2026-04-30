@@ -6,8 +6,8 @@
     "name": "Doug Guthrie",
     "email": "doug@braintrustdata.com"
   },
-  "homepage": "https://github.com/dpguthrie/bt-flywheel",
-  "repository": "https://github.com/dpguthrie/bt-flywheel",
+  "homepage": "https://github.com/dpguthrie/braintrust-flywheel-plugin",
+  "repository": "https://github.com/dpguthrie/braintrust-flywheel-plugin",
   "license": "MIT",
   "keywords": ["braintrust", "evals", "llm", "agent", "flywheel", "improvement"]
 }
