@@ -5,7 +5,7 @@ description: Use when improving an AI agent built on Braintrust — starting a d
 
 # Braintrust Agent Improvement Flywheel
 
-Eight-phase cycle: Orient → Discover → Diagnose → Curate → Iterate → Eval → Analyze → Loop.
+Eight-phase cycle: Orient → Discover → Diagnose → Curate → Iterate → Eval → Analyze → Loop. On exit, emit non-executing Act recommendations for the calling harness.
 
 ## When to Use
 
@@ -35,7 +35,7 @@ Load these when executing the relevant phase:
 - `references/bt-functions-patterns.md` — scorer/prompt/dataset read-write patterns
 - `references/bt-sync-patterns.md` — bulk log/experiment/dataset sync (pull/push)
 - `references/bt-topics-patterns.md` — Topics automation (input clustering, classification)
-- `references/bt-curate-patterns.py` — ground truth labeling, split assignment, dataset insert
+- `scripts/bt-curate-patterns.py` — ground truth labeling, split assignment, dataset insert
 - `references/bt-flywheel-output-templates.md` — `bt-flywheel-summary.json` and `bt-flywheel-narrative.md` templates
 
 ---
@@ -49,7 +49,7 @@ Before starting, check for autonomous mode signals in order:
 3. `FLYWHEEL_AUTONOMOUS=true` environment variable
 4. Stdin is not a TTY (non-interactive shell context)
 
-If any signal is present: **autonomous mode** — suppress all gates, log all decisions, write summary to `bt-flywheel-summary.json` on exit.
+If any signal is present: **autonomous mode** — suppress all gates, log all decisions, write summary and recommended actions to `bt-flywheel-summary.json` on exit.
 
 Otherwise: **interactive mode** — present plans before irreversible actions and wait for confirmation.
 
@@ -63,7 +63,7 @@ Establish session context before running any queries.
 
 Check in this order:
 1. `.bt/config.json` in the working directory — written by `bt setup`, contains `project` (name) and/or `project_id`
-2. `CLAUDE.md` in the project root — may document project name, ID, score columns, eval paths, dataset names
+2. Agent/project instruction files in the project root — `AGENTS.md`, `CLAUDE.md`, `.cursor/rules`, `.github/copilot-instructions.md`, or similar files may document project name, ID, score columns, eval paths, dataset names
 3. `bt projects list --json` — resolve name → ID programmatically
 
 ```bash
@@ -101,13 +101,13 @@ bt experiments list --json -p <project-name>
 
 **Schema Discovery** (always run after project ID is resolved):
 
-Check `CLAUDE.md` first for:
+Check project instruction files first for:
 - Score column names (e.g., `scores."Response Quality"`)
 - Facet column names
 - Eval file paths
 - Dataset names
 
-If not in `CLAUDE.md`, run schema introspection using the resolved `<PROJECT_ID>` with progressive time window expansion:
+If not documented there, run schema introspection using the resolved `<PROJECT_ID>` with progressive time window expansion:
 
 ```bash
 # Try 1 day
@@ -244,7 +244,7 @@ Extract the root span's `input` field — not the agent's output, which may be w
 
 #### Step 3 — Auto-label ground truth
 
-**Do not use the production output as `expected`** for failing examples. Use an LLM judge to generate correct expected values. Load `references/bt-curate-patterns.py` for the `generate_ground_truth` function (uses `gpt-4o`).
+**Do not use the production output as `expected`** for failing examples. Use an LLM judge to generate correct expected values. Load `scripts/bt-curate-patterns.py` for the `generate_ground_truth` function (uses `gpt-4o`).
 
 For passing examples where the production output looks correct, you may use it directly as `expected` — but spot-check a few first.
 
@@ -254,17 +254,17 @@ For passing examples where the production output looks correct, you may use it d
 
 #### Step 4 — Assign train/validation splits
 
-Use deterministic split assignment so the same row always lands in the same split across iterations. Load `references/bt-curate-patterns.py` for the `assign_split` function (SHA-256 hash of `seed:row_id`, 80/20 split).
+Use deterministic split assignment so the same row always lands in the same split across iterations. Load `scripts/bt-curate-patterns.py` for the `assign_split` function (SHA-256 hash of `seed:row_id`, 80/20 split).
 
 #### Step 5 — Insert with metadata
 
-Tag and insert each row with split and provenance metadata. Load `references/bt-curate-patterns.py` for the full insert pattern including the `bucket`, `split`, `source_trace_id`, and `flywheel_iteration` metadata fields.
+Tag and insert each row with split and provenance metadata. Load `scripts/bt-curate-patterns.py` for `build_dataset_payload()` and `insert_labeled_rows()`, including the `bucket`, `split`, `source_trace_id`, and `flywheel_iteration` metadata fields. The helper defaults to dry-run; write to Braintrust only after the relevant interactive confirmation or autonomous action plan has been logged.
 
 `bucket` is `"failing"` for low-score/error examples, `"passing"` for high-score examples.
 
 #### Step 6 — Scope evals to validation split
 
-Once rows have split metadata, scope Phase 6 Eval to the validation split. Load `references/bt-curate-patterns.py` for the filter snippet. Use the train split for smoke runs and iterative tuning; validation only for the final measurement.
+Once rows have split metadata, scope Phase 6 Eval to the validation split. Load `scripts/bt-curate-patterns.py` for the filter snippet. Use the train split for smoke runs and iterative tuning; validation only for the final measurement.
 
 ---
 
@@ -411,13 +411,35 @@ Route based on the Analyze verdict. When multiple conditions apply, address them
 | Metric didn't move despite agent change | → Phase 5: Iterate (find a different fix) |
 | Metric improved AND new edge cases found in eval | → Phase 4: Curate (add new cases) → re-run Phase 6: Eval |
 | Datasets don't cover cases found in eval | → Phase 4: Curate (dataset additions) → re-run Phase 6: Eval |
-| Metric improved, no regressions, scorers healthy | **Exit** — set new experiment as baseline, write summary, exit |
+| Metric improved, no regressions, scorers healthy | **Exit** — set new experiment as baseline, write summary and Act recommendations, exit |
 
 **In interactive mode**: Present the routing decision and reasoning. Allow the user to override or stop.
 
 **In autonomous mode**: Route automatically and log the decision. Write `bt-flywheel-summary.json` and `bt-flywheel-narrative.md` to the working directory root — see `references/bt-flywheel-output-templates.md` for both schemas.
 
 **Max iterations:** If the metric has not improved after 3 full loop iterations, exit with `loop_decision: "no-convergence"` — do not loop indefinitely.
+
+---
+
+## Act Recommendations
+
+Before exit, choose what a downstream harness should do next. Do not open PRs, create issues, send Slack messages, or create Jira/Linear tickets from the skill itself. The skill owns evidence-backed recommendation; the caller owns side effects, permissions, idempotency, and destination-specific policy.
+
+Add `recommended_actions` to `bt-flywheel-summary.json`. Use `references/bt-flywheel-output-templates.md` for the schema.
+
+Choose actions with these defaults:
+
+| Situation | Recommended action |
+|---|---|
+| Codebase changes were made, eval passed, no blocking regressions | `pull_request` |
+| Codebase changes were made, but regressions or uncertain impact remain | `pull_request` with `requires_human_review: true` |
+| No code changes, but production degradation, dataset gap, scorer issue, setup blocker, or no-convergence needs follow-up | `issue` |
+| Findings need human labeling, product judgment, credentials, or policy approval | `issue` |
+| Urgent degradation or completed autonomous run should notify a team | `slack` as an additional notification action |
+| The downstream team uses Jira or Linear instead of GitHub Issues | `jira` or `linear` instead of `issue` |
+| Production is healthy and no follow-up is needed | `none` |
+
+Each non-`none` action must include a title, body, reason, evidence links, `requires_human_review`, and an `idempotency_key` stable enough for the caller to deduplicate repeated scheduled runs.
 
 ---
 
@@ -428,4 +450,4 @@ The flywheel run is complete when any of the following is true:
 1. Loop routes to "exit" — target metric improved, no regressions, scorers healthy
 2. Diagnose exits early with "nothing actionable" — production is already healthy
 3. The user says they are done for this session (interactive mode)
-4. Autonomous mode completes one full loop iteration, routes to "done", and writes both summary files
+4. Autonomous mode completes one full loop iteration, routes to "done", and writes summary, narrative, and Act recommendations

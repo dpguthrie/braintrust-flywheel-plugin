@@ -4,6 +4,8 @@
 
 Written by autonomous mode at the end of Phase 8 Loop (or on early healthy exit from Phase 3 Diagnose).
 
+Validate this file against `schemas/bt-flywheel-summary.schema.json` when the repository includes the schema.
+
 ```json
 {
   "timestamp": "<ISO8601>",
@@ -30,9 +32,25 @@ Written by autonomous mode at the end of Phase 8 Loop (or on early healthy exit 
     }
   ],
   "loop_decision": "<done | re-discover | re-curate | re-iterate | no-convergence>",
-  "loop_reasoning": "<reasoning>"
+  "loop_reasoning": "<reasoning>",
+  "recommended_actions": [
+    {
+      "type": "<pull_request | issue | slack | jira | linear | none>",
+      "reason": "<why this action is appropriate>",
+      "title": "<short human-readable title>",
+      "body_markdown": "<action body with evidence, findings, changes, and next steps>",
+      "requires_human_review": true,
+      "evidence": [
+        "https://www.braintrust.dev/app/<org>/p/<project>/experiments/<experiment-id>",
+        "https://www.braintrust.dev/app/<org>/p/<project>/r/<trace-id>"
+      ],
+      "idempotency_key": "bt-flywheel:<project-name>:<run-date>:<action-type>:<stable-fingerprint>"
+    }
+  ]
 }
 ```
+
+Use `type: "none"` when no follow-up is needed. For `none`, set `requires_human_review` to `false`, keep `evidence` as any run summary links, and use the title/body to explain why no action is needed.
 
 ---
 
@@ -67,8 +85,13 @@ trace IDs with Braintrust links, failure patterns observed]
 - [ ] No regressions in non-targeted metrics
 - [ ] Dataset additions reflect real production failure patterns
 - [ ] Agent/prompt changes are intentional and appropriately scoped
+
+### Recommended Actions
+[List the entries from `recommended_actions`: action type, title, reason, whether human review is required, and idempotency key.]
 ```
 
 ### If no changes were made
 
 Write a concise summary of what was found and why no action was taken — cite specific numbers and whether production is healthy or needs human attention.
+
+If follow-up is still needed, include the recommended issue/ticket/Slack action and the evidence the downstream harness should use.

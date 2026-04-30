@@ -53,16 +53,19 @@ FLYWHEEL RESPONSE:
   Regressions:     {regression_count} detected
   Loop decision:   {loop_decision}
   Reasoning:       {loop_reasoning}
+  Recommended actions: {recommended_actions}
 
 Evaluate the flywheel's response on these dimensions:
   1. Diagnosis quality: Did it correctly identify the situation (problem or healthy)?
   2. Action appropriateness: Were the changes (or lack of changes) right for the diagnosis?
   3. Routing correctness: Is the loop decision appropriate given the outcome?
+  4. Act correctness: Did it recommend the right downstream action without executing it?
 
 Key failure modes to watch for:
   - Making changes to a healthy system (unnecessary intervention)
   - Wrong diagnosis: fixing agent code when scorer is broken (bimodal distribution), or vice versa
   - Ignoring detected regressions and marking "done"
+  - Recommending the wrong Act step (PR vs issue/ticket vs none)
   - Vague or unsupported reasoning not grounded in specific findings
   - Missing the primary issue when multiple problems are present
 
@@ -292,6 +295,106 @@ _DATASET = [
             },
         },
         "expected": "A or B: no-convergence correctly identified after 3 iterations, exits cleanly with evidence",
+    },
+
+    # ── Positive examples: Act recommendations ───────────────────────────────
+
+    {
+        "input": {
+            "tags": ["positive", "act-pr"],
+            "expected_action_types": ["pull_request"],
+            "scenario": (
+                "The flywheel made a targeted prompt change backed by trace evidence. "
+                "Smoke and full eval passed, score improved +0.09, and no regressions were found."
+            ),
+            "summary": {
+                "goal": "fix low math scores",
+                "phases_run": ["orient", "discover", "diagnose", "iterate", "eval", "analyze", "loop"],
+                "findings": ["Math traces averaged 0.38 vs 0.81 for non-math"],
+                "changes": {
+                    "agent": ["src/config.py: Added step-by-step verification instruction"],
+                    "scorers": [],
+                    "datasets": [],
+                },
+                "experiment": {"metric_delta": {"math-accuracy": 0.09}},
+                "regressions": [],
+                "loop_decision": "done",
+                "loop_reasoning": "Score improved and no regressions were found.",
+                "recommended_actions": [
+                    {
+                        "type": "pull_request",
+                        "reason": "Code changed and evals passed with no blocking regressions.",
+                        "title": "Flywheel: Improve math query handling",
+                        "body_markdown": "Trace evidence showed low math scores; eval improved +0.09.",
+                        "requires_human_review": True,
+                        "evidence": ["https://www.braintrust.dev/app/org/p/proj/experiments/exp-1"],
+                        "idempotency_key": "bt-flywheel:proj:2026-04-24:pull_request:math",
+                    }
+                ],
+            },
+        },
+        "expected": "A or B: code changes with passing evals should recommend a PR",
+    },
+    {
+        "input": {
+            "tags": ["positive", "act-issue"],
+            "expected_action_types": ["issue"],
+            "scenario": (
+                "Production degraded, but the flywheel could not safely change code because "
+                "the issue requires human labeling and product judgment."
+            ),
+            "summary": {
+                "goal": "investigate degraded support answers",
+                "phases_run": ["orient", "discover", "diagnose"],
+                "findings": ["27 low-score traces require human ground-truth labeling"],
+                "changes": {"agent": [], "scorers": [], "datasets": []},
+                "experiment": None,
+                "regressions": [],
+                "loop_decision": "done",
+                "loop_reasoning": "Human labels are required before safe iteration.",
+                "recommended_actions": [
+                    {
+                        "type": "issue",
+                        "reason": "Actionable follow-up exists but no safe automated code change was made.",
+                        "title": "Flywheel: Label low-score support traces",
+                        "body_markdown": "27 low-score traces need human labels before curation.",
+                        "requires_human_review": True,
+                        "evidence": ["https://www.braintrust.dev/app/org/p/proj/r/trace-1"],
+                        "idempotency_key": "bt-flywheel:proj:2026-04-24:issue:labeling",
+                    }
+                ],
+            },
+        },
+        "expected": "A or B: no code change plus human follow-up should recommend an issue",
+    },
+    {
+        "input": {
+            "tags": ["positive", "act-none"],
+            "expected_action_types": ["none"],
+            "scenario": "Production health check found healthy metrics and no follow-up work.",
+            "summary": {
+                "goal": "general health check",
+                "phases_run": ["orient", "discover", "diagnose"],
+                "findings": ["Average score 0.86, normal distribution, no coverage gaps"],
+                "changes": {"agent": [], "scorers": [], "datasets": []},
+                "experiment": None,
+                "regressions": [],
+                "loop_decision": "done",
+                "loop_reasoning": "Production is healthy.",
+                "recommended_actions": [
+                    {
+                        "type": "none",
+                        "reason": "No follow-up needed.",
+                        "title": "Flywheel: No action needed",
+                        "body_markdown": "Production is healthy; no changes or tickets recommended.",
+                        "requires_human_review": False,
+                        "evidence": [],
+                        "idempotency_key": "bt-flywheel:proj:2026-04-24:none:healthy",
+                    }
+                ],
+            },
+        },
+        "expected": "A or B: healthy system should recommend no downstream action",
     },
 
     # ── Negative examples: concrete failure modes ─────────────────────────────
@@ -528,6 +631,7 @@ async def behavior_quality(input, output, expected=None, **kwargs):
         regression_count=len(summary.get("regressions", [])),
         loop_decision=summary.get("loop_decision", "unknown"),
         loop_reasoning=summary.get("loop_reasoning", "(none)"),
+        recommended_actions=summary.get("recommended_actions", "(none)"),
     )
 
     try:
@@ -562,19 +666,63 @@ def regression_handled(input, output, expected=None, **kwargs):
     return 0.0 if loop_decision == "done" else 1.0
 
 
+def act_recommendation(input, output, expected=None, **kwargs):
+    """Code check: expected Act recommendations are present and well-formed."""
+    expected_types = input.get("expected_action_types")
+    if not expected_types:
+        return 1.0
+
+    actions = output.get("recommended_actions", [])
+    actual_types = [action.get("type") for action in actions]
+    if actual_types != expected_types:
+        return {
+            "score": 0.0,
+            "metadata": {"expected": expected_types, "actual": actual_types},
+        }
+
+    required_fields = {
+        "type",
+        "reason",
+        "title",
+        "body_markdown",
+        "requires_human_review",
+        "evidence",
+        "idempotency_key",
+    }
+    missing = [
+        {"type": action.get("type"), "fields": sorted(required_fields - set(action))}
+        for action in actions
+        if required_fields - set(action)
+    ]
+    bad_none_review = [
+        action
+        for action in actions
+        if action.get("type") == "none" and action.get("requires_human_review") is not False
+    ]
+    score = 1.0 if not missing and not bad_none_review else 0.5
+    return {
+        "score": score,
+        "metadata": {
+            "expected": expected_types,
+            "actual": actual_types,
+            "missing": missing,
+            "bad_none_review_count": len(bad_none_review),
+        },
+    }
+
+
 # ─── Eval ─────────────────────────────────────────────────────────────────────
 
 braintrust.Eval(
     "Flywheel Behavior Quality",
     data=_DATASET,
     task=task,
-    scores=[behavior_quality, regression_handled],
+    scores=[behavior_quality, regression_handled, act_recommendation],
     project_name=_PROJECT,
     metadata={
         "description": (
             "Evaluates the strategic quality of bt-flywheel run summaries against "
-            "known production scenarios. Includes 5 positive examples (good behavior) "
-            "and 5 negative examples (specific failure modes to detect)."
+            "known production scenarios, including Act recommendation coverage."
         )
     },
 )

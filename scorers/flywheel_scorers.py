@@ -1,7 +1,7 @@
 """
-Flywheel quality scorers for Claude Code sessions running the bt-flywheel skill.
+Flywheel quality scorers for coding-agent sessions running the bt-flywheel skill.
 
-These scorers run *online* in Braintrust against Claude Code traces, measuring
+These scorers run *online* in Braintrust against coding-agent traces, measuring
 the quality of the flywheel agent's own behavior — not the downstream task agent.
 
 Six scorers are registered:
@@ -14,13 +14,20 @@ Six scorers are registered:
 
 Configuration (set in environment before deploying):
 
-  BRAINTRUST_CC_PROJECT       Project where Claude Code traces are logged.
-                              Default: "my-agent-claude-code"
+  BRAINTRUST_CC_PROJECT       Project where coding-agent traces are logged.
+                              Default: "my-agent-coding-agent"
 
   FLYWHEEL_CODE_PATHS         Pipe-separated regex alternation for paths considered
                               "code files" in edit-tracking scorers.
                               Example: "src/|evals/|scorers\\.py"
                               Default: empty — matches all Edit/Write spans
+
+Trace assumptions:
+
+  These scorers inspect span names for shell/edit/write events. They expect names
+  similar to "Bash:", "Terminal:", "Edit:", or "Write:". For agents that emit
+  different span names, adapt scorers/_scoring.py before treating the scores as
+  authoritative.
 
   FLYWHEEL_JUDGE_MODEL        Model used for LLM-judge scorers.
                               Default: "gpt-4o-mini"
@@ -33,7 +40,7 @@ Configuration (set in environment before deploying):
 Deployment:
 
   BRAINTRUST_API_KEY=... \\
-  BRAINTRUST_CC_PROJECT=my-agent-claude-code \\
+  BRAINTRUST_CC_PROJECT=my-agent-coding-agent \\
   FLYWHEEL_CODE_PATHS="src/|evals/|scorers\\.py" \\
   bt functions push --language python \\
     --requirements scorers/requirements.txt \\
@@ -61,7 +68,7 @@ from _scoring import (
 
 # ─── Configuration ─────────────────────────────────────────────────────────────
 
-_PROJECT_NAME = os.getenv("BRAINTRUST_CC_PROJECT", "my-agent-claude-code")
+_PROJECT_NAME = os.getenv("BRAINTRUST_CC_PROJECT", "my-agent-coding-agent")
 
 
 # ─── Online scorer handlers ────────────────────────────────────────────────────

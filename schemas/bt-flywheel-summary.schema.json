@@ -1,0 +1,125 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/dpguthrie/flywheel-plugin/schemas/bt-flywheel-summary.schema.json",
+  "title": "bt-flywheel-summary",
+  "type": "object",
+  "required": [
+    "timestamp",
+    "goal",
+    "phases_run",
+    "findings",
+    "changes",
+    "regressions",
+    "loop_decision",
+    "loop_reasoning",
+    "recommended_actions"
+  ],
+  "additionalProperties": true,
+  "properties": {
+    "timestamp": {
+      "type": "string",
+      "description": "ISO8601 timestamp for the flywheel run."
+    },
+    "goal": {
+      "type": "string"
+    },
+    "phases_run": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "findings": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "changes": {
+      "type": "object",
+      "required": ["agent", "scorers", "datasets"],
+      "additionalProperties": true,
+      "properties": {
+        "agent": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "scorers": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "datasets": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "experiment": {
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "new": { "type": "string" },
+            "new_url": { "type": "string" },
+            "baseline": { "type": "string" },
+            "baseline_url": { "type": "string" },
+            "metric_delta": {
+              "type": "object",
+              "additionalProperties": { "type": "number" }
+            }
+          }
+        }
+      ]
+    },
+    "regressions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["trace_id", "score", "url"],
+        "additionalProperties": true,
+        "properties": {
+          "trace_id": { "type": "string" },
+          "score": { "type": "number" },
+          "url": { "type": "string" }
+        }
+      }
+    },
+    "loop_decision": {
+      "type": "string",
+      "enum": ["done", "re-discover", "re-curate", "re-iterate", "no-convergence"]
+    },
+    "loop_reasoning": {
+      "type": "string"
+    },
+    "recommended_actions": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "type",
+          "reason",
+          "title",
+          "body_markdown",
+          "requires_human_review",
+          "evidence",
+          "idempotency_key"
+        ],
+        "additionalProperties": true,
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": ["pull_request", "issue", "slack", "jira", "linear", "none"]
+          },
+          "reason": { "type": "string" },
+          "title": { "type": "string" },
+          "body_markdown": { "type": "string" },
+          "requires_human_review": { "type": "boolean" },
+          "evidence": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "idempotency_key": { "type": "string" }
+        }
+      }
+    }
+  }
+}

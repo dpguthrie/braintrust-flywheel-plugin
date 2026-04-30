@@ -76,7 +76,7 @@ def _extract_summary_text(spans: list) -> str | None:
 def score_evidence_before_change(spans: list) -> dict:
     """Each code edit should be preceded by bt sql or bt view evidence gathering."""
     names = [_span_name(s) for s in spans]
-    # Claude Code logs tool calls as "Terminal:" in span names (metadata.tool_name="Bash")
+    # Some coding agents log shell tool calls as "Terminal:" rather than "Bash:".
     evidence_re = re.compile(r"^(Bash|Terminal):.*\b(bt sql|bt view)\b", re.IGNORECASE)
 
     edit_indices = [i for i, n in enumerate(names) if _edit_re.search(n)]

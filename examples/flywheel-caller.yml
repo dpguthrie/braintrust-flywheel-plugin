@@ -1,4 +1,4 @@
-# Example: calling the bt-flywheel reusable workflow from your repo.
+# Example: calling the Claude Code bt-flywheel reusable workflow from your repo.
 #
 # Copy this to .github/workflows/flywheel.yml in your project and fill in
 # the inputs below. The only required secrets are ANTHROPIC_API_KEY and
@@ -9,7 +9,7 @@
 #   2. Installs Claude Code CLI and Braintrust CLI
 #   3. Downloads the bt-flywheel skill into .claude/skills/
 #   4. Runs the flywheel optimization cycle via Claude Code
-#   5. If agent code changed: opens a PR with the narrative as the body
+#   5. Executes configured follow-up policy: PR, issue, summary only, or none
 #   6. Always: writes a job summary and uploads run artifacts
 
 name: Agent Flywheel
@@ -21,7 +21,7 @@ on:
 
 jobs:
   flywheel:
-    uses: dpguthrie/flywheel-plugin/.github/workflows/bt-flywheel.yml@main
+    uses: dpguthrie/flywheel-plugin/.github/workflows/bt-flywheel-claude.yml@main
 
     with:
       # ── Required ────────────────────────────────────────────────────────────
@@ -44,8 +44,17 @@ jobs:
       # ── Recommended ─────────────────────────────────────────────────────────
 
       # Paths to watch for changes — only these are staged and committed.
-      # Without this, `git add .` is used (respects .gitignore).
+      # If omitted, no files are staged and no PR is opened.
       code_paths: src/ evals/ scorers.py
+
+      # Follow-up policy after the run:
+      # auto honors bt-flywheel-summary.json recommended_actions.
+      # Other values: pr, issue, summary, none.
+      act_mode: auto
+
+      # Optional PR/issue settings.
+      base_branch: main
+      # issue_labels: flywheel,ai  # labels must already exist in the target repo
 
       # Additional env vars written to .env before the flywheel runs.
       # Put non-standard API keys and project config here.
