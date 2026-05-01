@@ -66,7 +66,7 @@ steps:
 
 ## Claude Code
 
-Invoke Claude Code directly after the common setup, or copy the full workflow in `examples/flywheel-caller.yml`:
+Invoke Claude Code directly after the common setup, or copy the full workflow in `examples/bt-flywheel/flywheel-caller.yml`:
 
 ```yaml
 - name: Run flywheel with Claude Code
@@ -142,7 +142,7 @@ cat bt-flywheel-narrative.md
 Validate the summary when you include this repo's schema in your harness:
 
 ```bash
-python -m jsonschema schemas/bt-flywheel-summary.schema.json bt-flywheel-summary.json
+python -m jsonschema .agent-skills/bt-flywheel/schemas/bt-flywheel-summary.schema.json bt-flywheel-summary.json
 ```
 
 Each recommended action includes:

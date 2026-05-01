@@ -1,8 +1,30 @@
-# bt-flywheel
+# Braintrust Skills
 
-An agent skill for continuously improving AI agents built on [Braintrust](https://braintrust.dev).
+A collection of agent skills for working with [Braintrust](https://braintrust.dev) through the `bt` CLI and repository-local coding-agent workflows.
 
-## What it does
+## Available Skills
+
+| Skill | Purpose |
+|---|---|
+| `bt-flywheel` | Continuously improve Braintrust-backed AI agents by mining traces, updating datasets/scorers/code, running evals, and emitting Act recommendations. |
+| `bt-cost-optimizer` | Analyze Braintrust logs, scorers, Topics, Gateway/provider spend, datasets, and experiments to recommend safe cost optimizations. |
+
+Install each skill by copying or installing the full directory under `skills/<skill-name>/`; references, scripts, and agent metadata are part of the skill.
+
+## Repository Layout
+
+```text
+skills/<skill-name>/        Installable skill bundles. SKILL.md is the canonical per-skill entrypoint.
+examples/<skill-name>/      Copyable runner and integration examples.
+evals/<skill-name>/         Offline evals for validating a skill's behavior.
+scorers/<skill-name>/       Braintrust online scorers or support code for a skill.
+```
+
+Do not add `README.md` files inside individual skill directories by default. Keep agent-facing instructions in `SKILL.md`, detailed context in `references/`, deterministic helpers in `scripts/`, and install/navigation docs in this README or [`skills/README.md`](skills/README.md).
+
+## bt-flywheel
+
+### What it does
 
 The flywheel guides you through an 8-phase improvement loop:
 
@@ -19,7 +41,7 @@ On exit, the skill writes evidence-backed Act recommendations into `bt-flywheel-
 
 Works in interactive dev sessions, CI pipelines, scheduled/cron contexts, post-deploy checks, incident follow-up, and other agent harnesses.
 
-## Agent-Agnostic Contract
+### Agent-Agnostic Contract
 
 `bt-flywheel` is meant to be plugged into different coding agents and automation systems. The portable contract is:
 
@@ -31,9 +53,9 @@ Works in interactive dev sessions, CI pipelines, scheduled/cron contexts, post-d
 
 The skill should not depend on a specific coding agent. Agent-specific files such as `.claude/skills/`, `.cursor/`, `AGENTS.md`, or CLI prompts are integration details.
 
-`bt-flywheel-summary.json` should validate against [`schemas/bt-flywheel-summary.schema.json`](schemas/bt-flywheel-summary.schema.json).
+`bt-flywheel-summary.json` should validate against the schema bundled with the skill, e.g. [`skills/bt-flywheel/schemas/bt-flywheel-summary.schema.json`](skills/bt-flywheel/schemas/bt-flywheel-summary.schema.json) in this repo.
 
-## Support Matrix
+### Support Matrix
 
 | Surface | Status | Notes |
 |---|---|---|
@@ -45,16 +67,34 @@ The skill should not depend on a specific coding agent. Agent-specific files suc
 | Webhooks | Recommendation only | Use `type: "webhook"` plus `webhook_url_env`; downstream harnesses own secrets and delivery |
 | Online flywheel scorers | Best-effort portable | Assumes trace spans expose shell/edit/write events with names similar to `Bash`, `Terminal`, `Edit`, or `Write` |
 
-## Install
+## bt-cost-optimizer
 
-Install the whole skill directory, not only `SKILL.md`; the `references/`, `scripts/`, and `agents/` files are part of the skill.
+`bt-cost-optimizer` helps a coding agent answer: "What Braintrust usage is driving cost, what can the `bt` CLI prove from data, and how should we safely change logging, scoring, Topics, Gateway usage, datasets, or experiments?"
 
-For Codex, use the standard skill installer:
+The skill:
+
+- Uses `bt status`, `bt projects`, `bt sql`, and `bt view` to collect bounded evidence from Braintrust.
+- Uses `bt scorers` and `bt topics` to inspect scorer inventory and Topics status/config where available.
+- Runs a local analyzer over exported rows to rank high-byte fields, largest traces, scorer spans, LLM token usage, and `JSONAttachment` candidates.
+- Inspects local code for Braintrust logging, scorer, and Gateway patterns and maps sample findings back to instrumentation.
+- Produces `bt-cost-optimization-report.md` and optionally `bt-cost-optimization-summary.json`.
+
+The skill distinguishes measured findings from advisory recommendations. `bt` can measure sampled rows, scorer spans, token totals, and Topics config/status; exact bill totals, negotiated pricing, retention policy, and Gateway cache/routing config may require billing/UI or code/config context.
+
+## Install Skills
+
+Install the whole skill directory, not only `SKILL.md`; the `references/`, `scripts/`, and `agents/` files are part of each skill.
+
+For Codex, use the standard skill installer and choose the skill path:
 
 ```bash
 python3 ~/.codex/skills/.system/skill-installer/scripts/install-skill-from-github.py \
   --repo dpguthrie/braintrust-flywheel-plugin \
   --path skills/bt-flywheel
+
+python3 ~/.codex/skills/.system/skill-installer/scripts/install-skill-from-github.py \
+  --repo dpguthrie/braintrust-flywheel-plugin \
+  --path skills/bt-cost-optimizer
 ```
 
 For project-local CI or another agent harness, copy the full skill directory into the runner's skill path:
@@ -63,9 +103,12 @@ For project-local CI or another agent harness, copy the full skill directory int
 mkdir -p .agent-skills
 curl -fsSL https://github.com/dpguthrie/braintrust-flywheel-plugin/archive/refs/heads/main.tar.gz \
   | tar -xz --strip-components=2 -C .agent-skills braintrust-flywheel-plugin-main/skills/bt-flywheel
+
+curl -fsSL https://github.com/dpguthrie/braintrust-flywheel-plugin/archive/refs/heads/main.tar.gz \
+  | tar -xz --strip-components=2 -C .agent-skills braintrust-flywheel-plugin-main/skills/bt-cost-optimizer
 ```
 
-For Claude Code plugin installs:
+For Claude Code plugin installs, the current plugin metadata is still named `bt-flywheel` for compatibility:
 
 ```
 /plugin marketplace add dpguthrie/bt-flywheel
@@ -78,25 +121,30 @@ Once installed, invoke the skill directly if your agent supports skills:
 
 ```
 /bt-flywheel
+/bt-cost-optimizer
 ```
 
-Or ask any coding agent to run the flywheel from the skill path:
+Or ask any coding agent to run the skill from the skill path:
 
 > "Use `skills/bt-flywheel/SKILL.md` or `.agent-skills/bt-flywheel/SKILL.md` to improve my Braintrust-backed agent."
 
-## Requirements
+For ingest optimization:
+
+> "Use `skills/bt-cost-optimizer/SKILL.md` or `.agent-skills/bt-cost-optimizer/SKILL.md` to analyze my Braintrust usage costs and recommend safe optimizations."
+
+## Common Requirements
 
 - [`bt` CLI](https://github.com/braintrustdata/bt) installed and authenticated
-- A Braintrust project with production traffic
+- A Braintrust project with logs, experiments, or datasets to inspect
 - (Optional) `.bt/config.json` configured via `bt setup` for zero-config project resolution
 
 ---
 
-## GitHub Actions
+## bt-flywheel GitHub Actions
 
 This repo includes example GitHub Actions workflows you can copy into your own repository. They install the skill and define the runner logic locally; they do not call a reusable workflow from this repo.
 
-Copy `examples/flywheel-caller.yml` to `.github/workflows/flywheel.yml` in your repo and customize the project-specific values, install command, prompt context, and staged paths.
+Copy `examples/bt-flywheel/flywheel-caller.yml` to `.github/workflows/flywheel.yml` in your repo and customize the project-specific values, install command, prompt context, and staged paths.
 
 Required secrets in your repo: `ANTHROPIC_API_KEY` (to run Claude Code), `BRAINTRUST_API_KEY`.
 
@@ -104,11 +152,11 @@ If your agent calls a third-party LLM directly (OpenAI, Gemini, etc.), include i
 
 Set staged paths explicitly in the workflow's change-detection step. Avoid `git add .` so generated summaries, logs, downloaded skills, and unrelated changes do not get committed accidentally.
 
-See [`examples/flywheel-caller.yml`](examples/flywheel-caller.yml) for the full annotated Claude Code example. For other coding agents, use the portable templates in [`examples/integrations.md`](examples/integrations.md): the common parts are installing Braintrust, making `skills/bt-flywheel` available, invoking the agent, and consuming the two output artifacts.
+See [`examples/bt-flywheel/flywheel-caller.yml`](examples/bt-flywheel/flywheel-caller.yml) for the full annotated Claude Code example. For other coding agents, use the portable templates in [`examples/bt-flywheel/integrations.md`](examples/bt-flywheel/integrations.md): the common parts are installing Braintrust, making `skills/bt-flywheel` available, invoking the agent, and consuming the two output artifacts.
 
 ---
 
-## Other Triggers
+## bt-flywheel Other Triggers
 
 The same skill can be invoked from many harnesses:
 
@@ -128,7 +176,7 @@ The same skill can be invoked from many harnesses:
 
 ## Flywheel Quality Scorers
 
-The `scorers/` directory contains six Braintrust online scorers that evaluate the quality of the flywheel's own execution — i.e., whether the coding agent runner is following the flywheel methodology correctly.
+The `scorers/bt-flywheel/` directory contains six Braintrust online scorers that evaluate the quality of the flywheel's own execution — i.e., whether the coding agent runner is following the flywheel methodology correctly.
 
 These are not scorers for your downstream task agent. They score the flywheel coding-agent session itself, catching things like:
 
@@ -146,22 +194,22 @@ These are not scorers for your downstream task agent. They score the flywheel co
 Install dependencies and push once to register them in the Braintrust project where your coding-agent traces are logged:
 
 ```bash
-pip install -r scorers/requirements.txt
+pip install -r scorers/bt-flywheel/requirements.txt
 
 BRAINTRUST_API_KEY=... \
 BRAINTRUST_CC_PROJECT=my-agent-coding-agent \
 FLYWHEEL_CODE_PATHS="src/|evals/|scorers\.py" \
 bt functions push --language python \
-  --requirements scorers/requirements.txt \
+  --requirements scorers/bt-flywheel/requirements.txt \
   --if-exists replace \
-  scorers/flywheel_scorers.py
+  scorers/bt-flywheel/flywheel_scorers.py
 ```
 
 Re-run any time you want to push updated scorer logic.
 
 `FLYWHEEL_CODE_PATHS` scopes edit-tracking scorers to your source files. Leave it empty to match all Edit/Write spans.
 
-Trace assumption: the online scorers inspect span names for shell/edit/write events. They expect names similar to `Bash:`, `Terminal:`, `Edit:`, or `Write:`. If your coding agent logs different span names, adapt `scorers/_scoring.py` before relying on those scores.
+Trace assumption: the online scorers inspect span names for shell/edit/write events. They expect names similar to `Bash:`, `Terminal:`, `Edit:`, or `Write:`. If your coding agent logs different span names, adapt `scorers/bt-flywheel/_scoring.py` before relying on those scores.
 
 The LLM-judge scorers (`Narrative Specificity`, `Diagnostic Coherence`) use `gpt-4o-mini` by default. Override with `FLYWHEEL_JUDGE_MODEL=<model>`.
 
@@ -169,7 +217,7 @@ The LLM-judge scorers (`Narrative Specificity`, `Diagnostic Coherence`) use `gpt
 
 ## Offline Evals
 
-The `evals/` directory contains two Braintrust offline evals for measuring the quality of the flywheel skill itself.
+The `evals/bt-flywheel/` directory contains two Braintrust offline evals for measuring the quality of the flywheel skill itself.
 
 ### Why offline evals?
 
@@ -179,19 +227,19 @@ The online scorers (above) catch anti-patterns in individual live runs. The offl
 - Validating that the LLM judge rubric correctly distinguishes good flywheel behavior from known failure modes
 - Providing a benchmark dataset of positive and negative examples you can extend as new failure modes are discovered
 
-### `evals/eval_scorers.py` — Scorer unit tests
+### `evals/bt-flywheel/eval_scorers.py` — Scorer unit tests
 
 Tests the four deterministic scorer functions (`Evidence Before Change`, `Smoke Test Discipline`, `Run Efficiency`, `Claimed vs Actual`) against 22 fixture span sequences. Each case asserts the computed score falls within an expected range.
 
 ```bash
-pip install -r evals/requirements.txt
+pip install -r evals/bt-flywheel/requirements.txt
 
 BRAINTRUST_API_KEY=... \
 BRAINTRUST_EVAL_PROJECT=bt-flywheel \
-braintrust eval evals/eval_scorers.py
+braintrust eval evals/bt-flywheel/eval_scorers.py
 ```
 
-### `evals/eval_behavior.py` — Behavior quality evaluation
+### `evals/bt-flywheel/eval_behavior.py` — Behavior quality evaluation
 
 Tests whether the LLM judge correctly rates flywheel behavior against synthetic scenarios: positive examples, Act recommendation examples, and negative failure modes:
 
@@ -216,5 +264,5 @@ Tests whether the LLM judge correctly rates flywheel behavior against synthetic 
 BRAINTRUST_API_KEY=... \
 BRAINTRUST_EVAL_PROJECT=bt-flywheel \
 FLYWHEEL_JUDGE_MODEL=gpt-4o \
-braintrust eval evals/eval_behavior.py
+braintrust eval evals/bt-flywheel/eval_behavior.py
 ```

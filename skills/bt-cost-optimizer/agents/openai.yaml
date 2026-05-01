@@ -1,0 +1,4 @@
+interface:
+  display_name: "Braintrust Cost Optimizer"
+  short_description: "Analyze Braintrust logs, scorers, Topics, and LLM spend to recommend cost optimizations"
+  default_prompt: "Use $bt-cost-optimizer to analyze my Braintrust usage costs and recommend safe optimizations across logs, scorers, Topics, and Gateway."

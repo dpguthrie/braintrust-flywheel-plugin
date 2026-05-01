@@ -15,7 +15,7 @@ should rate positive examples A/B and negative examples C/D.
 
 Run:
     cd /path/to/flywheel-plugin
-    BRAINTRUST_API_KEY=... braintrust eval evals/eval_behavior.py
+    BRAINTRUST_API_KEY=... braintrust eval evals/bt-flywheel/eval_behavior.py
 """
 
 import os
@@ -23,7 +23,7 @@ import sys
 from pathlib import Path
 from typing import Literal
 
-sys.path.insert(0, str(Path(__file__).parent.parent / "scorers"))
+sys.path.insert(0, str(Path(__file__).parents[2] / "scorers" / "bt-flywheel"))
 
 import braintrust
 from _scoring import _CHOICE_SCORES, _LLMChoice, client

@@ -2,18 +2,18 @@
 Offline unit tests for the four deterministic bt-flywheel scorer functions.
 
 Each test case is a fixture span sequence paired with an expected score range.
-Scorer functions are imported from scorers/_scoring.py — no Braintrust registration occurs.
+Scorer functions are imported from scorers/bt-flywheel/_scoring.py; no Braintrust registration occurs.
 
 Run:
     cd /path/to/flywheel-plugin
-    BRAINTRUST_API_KEY=... braintrust eval evals/eval_scorers.py
+    BRAINTRUST_API_KEY=... braintrust eval evals/bt-flywheel/eval_scorers.py
 """
 
 import os
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parent.parent / "scorers"))
+sys.path.insert(0, str(Path(__file__).parents[2] / "scorers" / "bt-flywheel"))
 
 import braintrust
 from _scoring import (

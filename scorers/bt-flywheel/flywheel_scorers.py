@@ -26,7 +26,7 @@ Trace assumptions:
 
   These scorers inspect span names for shell/edit/write events. They expect names
   similar to "Bash:", "Terminal:", "Edit:", or "Write:". For agents that emit
-  different span names, adapt scorers/_scoring.py before treating the scores as
+  different span names, adapt scorers/bt-flywheel/_scoring.py before treating the scores as
   authoritative.
 
   FLYWHEEL_JUDGE_MODEL        Model used for LLM-judge scorers.
@@ -43,9 +43,9 @@ Deployment:
   BRAINTRUST_CC_PROJECT=my-agent-coding-agent \\
   FLYWHEEL_CODE_PATHS="src/|evals/|scorers\\.py" \\
   bt functions push --language python \\
-    --requirements scorers/requirements.txt \\
+    --requirements scorers/bt-flywheel/requirements.txt \\
     --if-exists replace \\
-    scorers/flywheel_scorers.py
+    scorers/bt-flywheel/flywheel_scorers.py
 
   Re-run any time you want to push updated scorer logic.
 """

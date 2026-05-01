@@ -1,6 +1,6 @@
 {
   "name": "bt-flywheel",
-  "description": "Agent improvement flywheel for Braintrust: mine production traces, curate datasets and scorers, iterate on agent code, and run evals in a continuous improvement loop.",
+  "description": "Braintrust agent skills collection: improve agents with bt-flywheel and optimize Braintrust usage costs with bt-cost-optimizer.",
   "version": "1.0.0",
   "author": {
     "name": "Doug Guthrie",
@@ -9,5 +9,5 @@
   "homepage": "https://github.com/dpguthrie/braintrust-flywheel-plugin",
   "repository": "https://github.com/dpguthrie/braintrust-flywheel-plugin",
   "license": "MIT",
-  "keywords": ["braintrust", "evals", "llm", "agent", "flywheel", "improvement"]
+  "keywords": ["braintrust", "evals", "llm", "agent", "flywheel", "ingest", "cost", "bt-cli"]
 }

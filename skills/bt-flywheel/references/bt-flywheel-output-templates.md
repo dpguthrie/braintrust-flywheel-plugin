@@ -4,7 +4,7 @@
 
 Written by autonomous mode at the end of Phase 8 Loop (or on early healthy exit from Phase 3 Diagnose).
 
-Validate this file against `schemas/bt-flywheel-summary.schema.json` when the repository includes the schema.
+Validate this file against `<bt-flywheel-skill-path>/schemas/bt-flywheel-summary.schema.json` when the schema is available.
 
 ```json
 {
