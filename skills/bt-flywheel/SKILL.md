@@ -23,7 +23,7 @@ Every phase can surface the need to change any of these:
 |---|---|---|
 | **Agent** | Customer codebase (code files) | Code edits |
 | **Scorers** | Braintrust (`bt functions`) or codebase | `bt functions push` or code edit |
-| **Datasets** | Braintrust | Python SDK or Braintrust UI (no `bt datasets` CLI) |
+| **Datasets** | Braintrust | `bt datasets create/update/view/list` |
 
 ## Reference Files
 
@@ -32,10 +32,10 @@ Load these when executing the relevant phase:
 - `references/bt-sql-patterns.md` — SQL query templates for Discover and Analyze
 - `references/bt-view-patterns.md` — `bt view` command patterns
 - `references/bt-eval-patterns.md` — eval invocation patterns
-- `references/bt-functions-patterns.md` — scorer/prompt/dataset read-write patterns
+- `references/bt-functions-patterns.md` — scorer, prompt, and dataset CLI patterns
 - `references/bt-sync-patterns.md` — bulk log/experiment/dataset sync (pull/push)
 - `references/bt-topics-patterns.md` — Topics automation (input clustering, classification)
-- `scripts/bt-curate-patterns.py` — ground truth labeling, split assignment, dataset insert
+- `scripts/bt-curate-patterns.py` — ground truth labeling, split assignment, dataset row construction/upsert
 - `references/bt-flywheel-output-templates.md` — `bt-flywheel-summary.json` and `bt-flywheel-narrative.md` templates
 
 ---
@@ -212,7 +212,7 @@ Execute dataset and scorer changes identified in the Diagnose plan.
 
 ### Updating Datasets
 
-Load `references/bt-sql-patterns.md` if you need to inspect existing dataset content.
+Load `references/bt-functions-patterns.md` if you need dataset CLI examples. Load `references/bt-sql-patterns.md` only when you need SQL filtering over dataset content.
 
 #### Step 1 — Collect candidates (balanced)
 
@@ -258,7 +258,34 @@ Use deterministic split assignment so the same row always lands in the same spli
 
 #### Step 5 — Insert with metadata
 
-Tag and insert each row with split and provenance metadata. Load `scripts/bt-curate-patterns.py` for `build_dataset_payload()` and `insert_labeled_rows()`, including the `bucket`, `split`, `source_trace_id`, and `flywheel_iteration` metadata fields. The helper defaults to dry-run; write to Braintrust only after the relevant interactive confirmation or autonomous action plan has been logged.
+Tag each row with split and provenance metadata. Load `scripts/bt-curate-patterns.py` for `build_dataset_payload()` and `insert_labeled_rows()`, including a stable `id` field plus the `bucket`, `split`, `source_trace_id`, and `flywheel_iteration` metadata fields. The helper defaults to dry-run and prints CLI-ready JSON rows; write to Braintrust only after the relevant interactive confirmation or autonomous action plan has been logged.
+
+Use the `bt datasets` CLI for all dataset writes:
+
+```bash
+# Build and review rows without writing
+python skills/bt-flywheel/scripts/bt-curate-patterns.py \
+  --labeled-rows labeled_rows.json \
+  --project-name "<project-name>" \
+  --dataset-name "<dataset-name>" \
+  --project-id "<project-id>" \
+  --iteration "<flywheel-iteration>" > curated_rows.json
+
+# If the dataset does not exist yet
+bt datasets create "<dataset-name>" -p "<project-name>" --file curated_rows.json --id-field id
+
+# Upsert rows into an existing dataset by stable record id
+bt datasets update "<dataset-name>" -p "<project-name>" --file curated_rows.json --id-field id
+
+# Or let the helper execute the same CLI write after confirmation
+python skills/bt-flywheel/scripts/bt-curate-patterns.py \
+  --labeled-rows labeled_rows.json \
+  --project-name "<project-name>" \
+  --dataset-name "<dataset-name>" \
+  --project-id "<project-id>" \
+  --iteration "<flywheel-iteration>" \
+  --execute
+```
 
 `bucket` is `"failing"` for low-score/error examples, `"passing"` for high-score examples.
 
@@ -271,10 +298,10 @@ Once rows have split metadata, scope Phase 6 Eval to the validation split. Load 
 **Existing dataset updates** (structural changes): If the agent's interface changed, update stale dataset rows to use the new format — otherwise evals fail for the wrong reasons. Inspect current rows first:
 
 ```bash
-bt sql "SELECT * FROM dataset('<dataset-id>') LIMIT 20"
+bt datasets view "<dataset-name>" -p "<project-name>" --json --full --limit 20
 ```
 
-There is no `bt datasets` CLI command — use the Python SDK for writes and `bt sql` for reads.
+For broad filtered reads, `bt sql "SELECT * FROM dataset('<dataset-id>') ..."` is still useful. For routine inspection, creation, and upserts, prefer `bt datasets`.
 
 ### Updating Scorers
 

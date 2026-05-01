@@ -117,26 +117,50 @@ bt tools view <slug> -p <project-name>
 
 ---
 
-## Python SDK: Dataset Writes
+## bt datasets: Dataset Reads/Writes
 
-`bt` has no `datasets` subcommand — use the Python SDK for dataset operations:
+Use the `bt datasets` CLI for routine dataset operations. Prefer stable row IDs so refreshes are idempotent.
 
-```python
-import braintrust, os
-braintrust.login(api_key=os.getenv("BRAINTRUST_API_KEY"))
-dataset = braintrust.init_dataset(project="<project-name>", name="<dataset-name>")
+```bash
+# List and inspect datasets
+bt datasets list -p <project-name> --json
+bt datasets view <dataset-name> -p <project-name> --json --full --limit 20
 
-# Insert a new example
-dataset.insert({
-    "input": {"messages": [{"role": "user", "content": "..."}]},
-    "expected": "...",
-    "tags": ["production", "edge-case"]
-})
+# Create a dataset and seed rows from JSON or JSONL
+bt datasets create <dataset-name> -p <project-name> --file records.jsonl --id-field id
+
+# Upsert rows into an existing dataset by stable record id
+bt datasets update <dataset-name> -p <project-name> --file records.jsonl --id-field id
 ```
 
-Use `braintrust.init_dataset()` directly — `braintrust.login()` returns `None`.
+Rows can be JSON array entries or JSONL records. Keep the record ID stable across flywheel runs:
 
-To inspect existing dataset content, use `bt sql`:
+```json
+{
+  "id": "flywheel:<project-id>:<source-trace-id>",
+  "input": {"messages": [{"role": "user", "content": "..."}]},
+  "expected": "...",
+  "tags": ["production", "flywheel-curated", "validation", "failing"],
+  "metadata": {
+    "source_trace_id": "<source-trace-id>",
+    "source_project_id": "<project-id>",
+    "bucket": "failing",
+    "split": "validation",
+    "flywheel_iteration": "<iteration-id>"
+  }
+}
+```
+
+For a quick single-row update, inline JSON is acceptable:
+
+```bash
+bt datasets update <dataset-name> -p <project-name> \
+  --rows '[{"id":"case-1","input":{"text":"hi"},"expected":"hello"}]' \
+  --id-field id
+```
+
+For broad filtered reads, `bt sql` is still useful:
+
 ```bash
 bt sql "SELECT * FROM dataset('<dataset-id>') LIMIT 20"
 ```
