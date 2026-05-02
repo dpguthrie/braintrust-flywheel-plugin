@@ -108,10 +108,11 @@ curl -fsSL https://github.com/dpguthrie/braintrust-skills/archive/refs/heads/mai
   | tar -xz --strip-components=2 -C .agent-skills braintrust-skills-main/skills/bt-cost-optimizer
 ```
 
-For Claude Code, install both skills at once via the plugin:
+For Claude Code (and most other agents), use `npx skills`:
 
 ```bash
-claude plugins install github:dpguthrie/braintrust-skills
+npx skills add dpguthrie/braintrust-skills@bt-flywheel -g -y
+npx skills add dpguthrie/braintrust-skills@bt-cost-optimizer -g -y
 ```
 
 ## Usage
