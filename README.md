@@ -89,11 +89,11 @@ For Codex, use the standard skill installer and choose the skill path:
 
 ```bash
 python3 ~/.codex/skills/.system/skill-installer/scripts/install-skill-from-github.py \
-  --repo dpguthrie/braintrust-flywheel-plugin \
+  --repo dpguthrie/braintrust-skills \
   --path skills/bt-flywheel
 
 python3 ~/.codex/skills/.system/skill-installer/scripts/install-skill-from-github.py \
-  --repo dpguthrie/braintrust-flywheel-plugin \
+  --repo dpguthrie/braintrust-skills \
   --path skills/bt-cost-optimizer
 ```
 
@@ -101,18 +101,17 @@ For project-local CI or another agent harness, copy the full skill directory int
 
 ```bash
 mkdir -p .agent-skills
-curl -fsSL https://github.com/dpguthrie/braintrust-flywheel-plugin/archive/refs/heads/main.tar.gz \
-  | tar -xz --strip-components=2 -C .agent-skills braintrust-flywheel-plugin-main/skills/bt-flywheel
+curl -fsSL https://github.com/dpguthrie/braintrust-skills/archive/refs/heads/main.tar.gz \
+  | tar -xz --strip-components=2 -C .agent-skills braintrust-skills-main/skills/bt-flywheel
 
-curl -fsSL https://github.com/dpguthrie/braintrust-flywheel-plugin/archive/refs/heads/main.tar.gz \
-  | tar -xz --strip-components=2 -C .agent-skills braintrust-flywheel-plugin-main/skills/bt-cost-optimizer
+curl -fsSL https://github.com/dpguthrie/braintrust-skills/archive/refs/heads/main.tar.gz \
+  | tar -xz --strip-components=2 -C .agent-skills braintrust-skills-main/skills/bt-cost-optimizer
 ```
 
-For Claude Code plugin installs, the current plugin metadata is still named `bt-flywheel` for compatibility:
+For Claude Code, install both skills at once via the plugin:
 
-```
-/plugin marketplace add dpguthrie/bt-flywheel
-/plugin install bt-flywheel@bt-flywheel
+```bash
+claude plugins install github:dpguthrie/braintrust-skills
 ```
 
 ## Usage
