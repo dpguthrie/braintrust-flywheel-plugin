@@ -1,24 +1,36 @@
 {
-  "name": "bt-flywheel",
-  "id": "bt-flywheel",
+  "name": "braintrust-skills",
+  "id": "braintrust-skills",
   "owner": {
     "name": "dpguthrie"
   },
   "metadata": {
-    "description": "Braintrust agent skills collection: improve agents with bt-flywheel and optimize Braintrust usage costs with bt-cost-optimizer.",
+    "description": "Braintrust agent skills: improve agents with bt-flywheel and optimize costs with bt-cost-optimizer.",
     "version": "1.0.0"
   },
   "plugins": [
     {
       "name": "bt-flywheel",
-      "source": "./",
-      "description": "Braintrust agent skills collection: improve agents with bt-flywheel and optimize Braintrust usage costs with bt-cost-optimizer.",
+      "source": "./skills/bt-flywheel",
+      "description": "Eight-phase flywheel for improving AI agents built on Braintrust: orient, discover, diagnose, curate, iterate, eval, analyze, and loop.",
       "version": "1.0.0",
       "author": {
         "name": "Doug Guthrie",
         "email": "doug@braintrustdata.com"
       },
-      "keywords": ["braintrust", "evals", "llm", "agent", "flywheel", "ingest", "cost", "bt-cli"],
+      "keywords": ["braintrust", "evals", "llm", "agent", "flywheel"],
+      "category": "development"
+    },
+    {
+      "name": "bt-cost-optimizer",
+      "source": "./skills/bt-cost-optimizer",
+      "description": "Analyze and reduce Braintrust usage costs across logs, scorers, Topics, Gateway LLM spend, datasets, and experiments.",
+      "version": "1.0.0",
+      "author": {
+        "name": "Doug Guthrie",
+        "email": "doug@braintrustdata.com"
+      },
+      "keywords": ["braintrust", "cost", "optimization", "ingest", "bt-cli"],
       "category": "development"
     }
   ]

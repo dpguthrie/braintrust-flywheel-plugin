@@ -1,13 +1,13 @@
 {
-  "name": "bt-flywheel",
-  "description": "Braintrust agent skills collection: improve agents with bt-flywheel and optimize Braintrust usage costs with bt-cost-optimizer.",
+  "name": "braintrust-skills",
+  "description": "Braintrust agent skills: improve agents with bt-flywheel and optimize costs with bt-cost-optimizer.",
   "version": "1.0.0",
   "author": {
     "name": "Doug Guthrie",
     "email": "doug@braintrustdata.com"
   },
-  "homepage": "https://github.com/dpguthrie/braintrust-flywheel-plugin",
-  "repository": "https://github.com/dpguthrie/braintrust-flywheel-plugin",
+  "homepage": "https://github.com/dpguthrie/braintrust-skills",
+  "repository": "https://github.com/dpguthrie/braintrust-skills",
   "license": "MIT",
   "keywords": ["braintrust", "evals", "llm", "agent", "flywheel", "ingest", "cost", "bt-cli"]
 }
