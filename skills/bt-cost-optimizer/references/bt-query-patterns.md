@@ -6,30 +6,32 @@ Use these patterns to collect bounded evidence. Always include a time range, exp
 
 `bt sql` returns at most **1,000 rows per query**. This is a hard limit, not a conservative default.
 
-To collect more than 1,000 rows, use cursor-based pagination: each response includes a `cursor` field; pass it as `OFFSET 'cursor_token'` in the next query, and repeat until `cursor` is `null`.
+To collect more than 1,000 rows, use cursor-based pagination: each response includes a `cursor` field; pass it as `OFFSET 'cursor_token'` in the next query. **Always set a page cap** — do not loop until cursor is null on an unbounded dataset. 3–5 pages (3,000–5,000 rows) is sufficient for identifying structural cost patterns; collecting more rarely changes the finding.
 
 ```bash
 # Page 1
 bt sql --json "SELECT * FROM project_logs('<PROJECT_ID>', shape => 'spans') \
   WHERE created >= NOW() - INTERVAL 7 day LIMIT 1000" > /tmp/page1.json
 
-# Extract cursor from page 1
+# Extract cursor
 CURSOR=$(python3 -c "import json; d=json.load(open('/tmp/page1.json')); print(d.get('cursor') or '')")
 
-# Page 2 (repeat until CURSOR is empty)
-bt sql --json "SELECT * FROM project_logs('<PROJECT_ID>', shape => 'spans') \
+# Page 2 (stop here unless patterns are still unclear after analyzing page 1)
+[ -n "$CURSOR" ] && bt sql --json "SELECT * FROM project_logs('<PROJECT_ID>', shape => 'spans') \
   WHERE created >= NOW() - INTERVAL 7 day LIMIT 1000 OFFSET '${CURSOR}'" > /tmp/page2.json
 ```
 
-Pass all pages to the analyzer together:
+Pass collected pages to the analyzer together:
 
 ```bash
 python3 skills/bt-cost-optimizer/scripts/analyze-cost-drivers.py \
-  /tmp/page1.json /tmp/page2.json /tmp/page3.json \
+  /tmp/page1.json /tmp/page2.json \
   --sample-days 7 --output bt-cost-optimization-report.md
 ```
 
-For aggregate questions (span counts, token totals, scorer call counts) prefer `GROUP BY` queries over full-row pagination — they return a single row per group and avoid the 1,000-row ceiling entirely.
+**When to collect more pages:** If the top-5 largest rows in page 1 are all the same trace or span type, a second page adds diversity. Beyond 5 pages, diminishing returns set in for structural analysis — use targeted queries instead (root spans only, LLM scorer spans only) to get better signal per row.
+
+For aggregate questions (span counts, token totals, scorer call counts) prefer `GROUP BY` queries — they return a single row per group and avoid the row limit entirely.
 
 ## Resolve Context
 
