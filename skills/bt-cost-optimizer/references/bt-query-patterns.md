@@ -2,6 +2,35 @@
 
 Use these patterns to collect bounded evidence. Always include a time range, explicit limit, or specific trace/span ID.
 
+## Hard Limits and Pagination
+
+`bt sql` returns at most **1,000 rows per query**. This is a hard limit, not a conservative default.
+
+To collect more than 1,000 rows, use cursor-based pagination: each response includes a `cursor` field; pass it as `OFFSET 'cursor_token'` in the next query, and repeat until `cursor` is `null`.
+
+```bash
+# Page 1
+bt sql --json "SELECT * FROM project_logs('<PROJECT_ID>', shape => 'spans') \
+  WHERE created >= NOW() - INTERVAL 7 day LIMIT 1000" > /tmp/page1.json
+
+# Extract cursor from page 1
+CURSOR=$(python3 -c "import json; d=json.load(open('/tmp/page1.json')); print(d.get('cursor') or '')")
+
+# Page 2 (repeat until CURSOR is empty)
+bt sql --json "SELECT * FROM project_logs('<PROJECT_ID>', shape => 'spans') \
+  WHERE created >= NOW() - INTERVAL 7 day LIMIT 1000 OFFSET '${CURSOR}'" > /tmp/page2.json
+```
+
+Pass all pages to the analyzer together:
+
+```bash
+python3 skills/bt-cost-optimizer/scripts/analyze-cost-drivers.py \
+  /tmp/page1.json /tmp/page2.json /tmp/page3.json \
+  --sample-days 7 --output bt-cost-optimization-report.md
+```
+
+For aggregate questions (span counts, token totals, scorer call counts) prefer `GROUP BY` queries over full-row pagination — they return a single row per group and avoid the 1,000-row ceiling entirely.
+
 ## Resolve Context
 
 ```bash
@@ -61,10 +90,12 @@ bt sql --json "SELECT root_span_id, COUNT(*) AS spans FROM project_logs('<PROJEC
 Fetch the project's active online scorer automation rules to see which scorers are running, at what sampling rate, with what filters, and on what span scope. This is required before making any sampling-rate recommendation — never suggest changing a rate you haven't measured.
 
 ```bash
-curl -s "https://api.braintrust.dev/v1/project_score?project_id=<PROJECT_ID>&limit=100" \
+curl -s "${BRAINTRUST_API_URL:-https://api.braintrust.dev}/v1/project_score?project_id=<PROJECT_ID>&limit=100" \
   -H "Authorization: Bearer ${BRAINTRUST_API_KEY}" \
   > /tmp/bt-cost-automations.json
 ```
+
+Use `BRAINTRUST_API_URL` to override the base URL for hybrid/on-premise customers — this is the same env var the `bt` CLI reads. If not set, it defaults to `https://api.braintrust.dev`.
 
 If `BRAINTRUST_API_KEY` is not set (e.g., the user authenticates via OAuth through the browser), note that automation rules must be reviewed in the Braintrust UI under **Project → Logs → Score** and ask the user to share the relevant config.
 

@@ -18,14 +18,56 @@ from pathlib import Path
 from typing import Any
 
 
-API_BASE = "https://api.braintrust.dev"
+API_BASE_DEFAULT = "https://api.braintrust.dev"
+
+
+def resolve_api_base() -> str:
+    """Resolve the Braintrust API base URL for the active profile.
+
+    Priority:
+    1. BRAINTRUST_API_URL env var (same var the bt CLI reads)
+    2. api_url from the active profile in ~/.config/bt/auth.json
+    3. Hardcoded default (cloud SaaS)
+    """
+    env_url = os.environ.get("BRAINTRUST_API_URL", "").strip()
+    if env_url:
+        return env_url.rstrip("/")
+
+    try:
+        auth_path = Path.home() / ".config" / "bt" / "auth.json"
+        auth = json.loads(auth_path.read_text())
+        profiles = auth.get("profiles") or {}
+
+        # Find the active profile: check local .bt/config.json first, then any project config
+        active_profile: str | None = None
+        for config_path in [Path(".bt/config.json"), Path.home() / ".config" / "bt" / "config.json"]:
+            if config_path.exists():
+                cfg = json.loads(config_path.read_text())
+                active_profile = cfg.get("profile") or cfg.get("org")
+                if active_profile:
+                    break
+
+        if active_profile and active_profile in profiles:
+            url = profiles[active_profile].get("api_url", "").strip()
+            if url:
+                return url.rstrip("/")
+
+        # Fall back to first profile with a non-default URL, then first profile overall
+        for prof in profiles.values():
+            url = prof.get("api_url", "").strip()
+            if url:
+                return url.rstrip("/")
+    except Exception:
+        pass
+
+    return API_BASE_DEFAULT
 
 
 # ---------------------------------------------------------------------------
 # HTTP helpers
 # ---------------------------------------------------------------------------
 
-def api_get(path: str, *, api_key: str, api_base: str = API_BASE, params: dict[str, str] | None = None) -> dict[str, Any]:
+def api_get(path: str, *, api_key: str, api_base: str = API_BASE_DEFAULT, params: dict[str, str] | None = None) -> dict[str, Any]:
     url = f"{api_base}{path}"
     if params:
         query = "&".join(f"{k}={urllib.request.quote(str(v))}" for k, v in params.items())
@@ -39,7 +81,7 @@ def api_get(path: str, *, api_key: str, api_base: str = API_BASE, params: dict[s
         raise RuntimeError(f"HTTP {exc.code} for {url}: {body}") from exc
 
 
-def paginate(path: str, *, api_key: str, api_base: str = API_BASE, extra_params: dict[str, str] | None = None, limit: int = 100) -> list[dict[str, Any]]:
+def paginate(path: str, *, api_key: str, api_base: str = API_BASE_DEFAULT, extra_params: dict[str, str] | None = None, limit: int = 100) -> list[dict[str, Any]]:
     params = {"limit": str(limit), **(extra_params or {})}
     data = api_get(path, api_key=api_key, api_base=api_base, params=params)
     if isinstance(data, list):
@@ -310,7 +352,7 @@ def render_markdown(summary: dict[str, Any]) -> str:
 
 def build_summary(args: argparse.Namespace) -> tuple[dict[str, Any], str]:
     api_key = args.api_key or os.environ.get("BRAINTRUST_API_KEY") or ""
-    api_base = args.api_base.rstrip("/")
+    api_base = (args.api_base or resolve_api_base()).rstrip("/")
     project_id = args.project_id
 
     summary: dict[str, Any] = {
@@ -406,7 +448,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--project-id", required=True, help="Braintrust project ID (UUID)")
     parser.add_argument("--api-key", default=None, help="Braintrust API key (falls back to BRAINTRUST_API_KEY env var)")
-    parser.add_argument("--api-base", default=API_BASE, help=f"Braintrust API base URL (default: {API_BASE})")
+    parser.add_argument("--api-base", default=None, help="Braintrust API base URL (default: resolves from BRAINTRUST_API_URL env var, active bt profile, or https://api.braintrust.dev)")
     parser.add_argument("--output", help="Write Markdown report to this file (default: stdout)")
     parser.add_argument("--json-output", help="Write machine-readable JSON summary to this file")
     return parser.parse_args(argv)
