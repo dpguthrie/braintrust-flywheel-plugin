@@ -23,11 +23,13 @@ Load these as needed:
 - `references/optimization-patterns.md` - concrete log, scorer, Topics, Gateway, and experiment recommendations
 - `references/report-template.md` - expected report structure
 - `scripts/analyze-cost-drivers.py` - local analyzer for exported Braintrust rows
+- `scripts/fetch-project-config.py` - fetches scorer definitions, automation rules (sampling rates, filters, scope), experiments, datasets, and project settings via the REST API and `bt` CLI
 
 ## Core Principles
 
 - Start with `bt` evidence. Run bounded queries and inspect a row sample before recommending changes.
 - Distinguish measured findings from recommendations that require UI, billing, Gateway, or code config review.
+- **Never recommend a Braintrust configuration option by name without verifying it exists.** Before including any UI field name, API parameter, or SDK option in a recommendation, confirm it appears in the live docs (`https://www.braintrust.dev/docs/guides/logs/score`) or in data returned by `bt` commands. If you cannot verify it, say so explicitly rather than naming it.
 - For logs, processed data is cumulative monthly ingest, not retained storage. Deleting old traces does not reduce the current month's processed-data usage.
 - The strongest log-cost lever is reducing bytes sent to Braintrust: omit, sample, truncate, summarize, deduplicate, or log IDs/references instead of full payloads.
 - Use `JSONAttachment` for large JSON that must remain available for debugging but does not need search, filtering, scorer logic, or dashboard grouping.
@@ -73,6 +75,17 @@ bt topics status --json > /tmp/bt-cost-topics-status.json
 bt topics config --json > /tmp/bt-cost-topics-config.json
 ```
 
+Also run `fetch-project-config.py` to pull scorer definitions cross-joined with automation rules, plus experiment/dataset counts and project settings:
+
+```bash
+python3 skills/bt-cost-optimizer/scripts/fetch-project-config.py \
+  --project-id <PROJECT_ID> \
+  --output /tmp/bt-config-report.md \
+  --json-output /tmp/bt-config-summary.json
+```
+
+This requires `BRAINTRUST_API_KEY` for automation rules, experiments, datasets, and project settings. If the key is not set, scorer definitions are still fetched via `bt scorers list`. When automation rules are unavailable, note that sampling rates and filters must be reviewed in the Braintrust UI (Project → Logs → Score) before making any sampling recommendations.
+
 If the project is very high volume, reduce the sample limit and use targeted queries for root spans, scorer spans, LLM spans, or known trace IDs.
 
 When experiments or datasets are suspected, sample those too with `experiment('<EXPERIMENT_ID>')` or `dataset('<DATASET_ID>')` if the IDs are known.
@@ -98,7 +111,7 @@ Find where cost drivers are produced. Prefer targeted code search over broad ass
 ```bash
 rg -n "init_logger|initLogger|logger\\.log|span\\.log|start_span|startSpan|braintrust|JSONAttachment|Attachment\\(" .
 rg -n "messages|transcript|documents|chunks|retrieved|context|prompt|completion|tool_calls|response|request|metadata|embedding" .
-rg -n "sampling_rate|apply_to_root_span|apply_to_span_names|btql_filter|skip_logging|LLM-as-a-Judge|autoevals|scorer" .
+rg -n "sampling_rate|apply_to_root_span|apply_to_span_names|btql_filter|LLM-as-a-Judge|autoevals|scorer" .
 rg -n "x-bt-use-cache|x-bt-cache-ttl|x-bt-endpoint-name|x-bt-compress-audio|BraintrustGateway|braintrust_proxy|base_url" .
 ```
 

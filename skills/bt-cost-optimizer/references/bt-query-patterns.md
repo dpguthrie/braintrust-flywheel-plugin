@@ -56,6 +56,40 @@ Find traces with many spans:
 bt sql --json "SELECT root_span_id, COUNT(*) AS spans FROM project_logs('<PROJECT_ID>', shape => 'spans') WHERE created >= NOW() - INTERVAL 7 day GROUP BY root_span_id ORDER BY spans DESC LIMIT 50" > /tmp/bt-cost-deep-traces.json
 ```
 
+## Scorer Automations
+
+Fetch the project's active online scorer automation rules to see which scorers are running, at what sampling rate, with what filters, and on what span scope. This is required before making any sampling-rate recommendation — never suggest changing a rate you haven't measured.
+
+```bash
+curl -s "https://api.braintrust.dev/v1/project_score?project_id=<PROJECT_ID>&limit=100" \
+  -H "Authorization: Bearer ${BRAINTRUST_API_KEY}" \
+  > /tmp/bt-cost-automations.json
+```
+
+If `BRAINTRUST_API_KEY` is not set (e.g., the user authenticates via OAuth through the browser), note that automation rules must be reviewed in the Braintrust UI under **Project → Logs → Score** and ask the user to share the relevant config.
+
+Key fields to extract from each automation rule:
+
+- `name` — rule name
+- `scorer_id` / scorer reference — which scorer it runs
+- `sampling_rate` — current percentage (0–1); if already ≤ 0.1, sampling is not a lever
+- `apply_to_root_span` — whether it targets root spans only
+- `apply_to_span_names` — specific span names targeted
+- `filter` — existing SQL filter clause, if any
+
+Summarize the result before writing recommendations:
+
+```bash
+python3 - <<'EOF'
+import json
+with open('/tmp/bt-cost-automations.json') as f:
+    data = json.load(f)
+rules = data.get('objects', data) if isinstance(data, dict) else data
+for r in rules:
+    print(f"name={r.get('name')} sampling={r.get('sampling_rate')} root={r.get('apply_to_root_span')} filter={bool(r.get('filter'))}")
+EOF
+```
+
 ## Scorers
 
 List scorers:

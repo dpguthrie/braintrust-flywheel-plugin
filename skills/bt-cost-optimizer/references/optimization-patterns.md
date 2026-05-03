@@ -131,12 +131,13 @@ Scorer costs have two parts:
 
 Optimization levers:
 
-- Lower online scorer `sampling_rate` for high-volume apps. Start with 1-10% for routine traffic and increase only when coverage is statistically or operationally necessary.
-- Apply scorers to root spans or named spans only with `apply_to_root_span` and `apply_to_span_names`.
-- Use `btql_filter` to score only traces that matter, such as production traffic, enterprise customers, errors, specific routes, or low-confidence outputs.
-- Use `skip_logging` when scorer spans are not needed for debugging; otherwise scorer logging can add log volume.
+- Lower the **Sampling rate** on each online scorer automation. The UI calls it "Sampling rate"; the REST API field is `sampling_rate`. Start with 1–10% for routine traffic and increase only when statistical or operational coverage requires more.
+- Scope scorers to root spans or specific span names using the **Root spans toggle** and **Span names** fields in the automation UI (REST API: `apply_to_root_span`, `apply_to_span_names`).
+- Add a **SQL filter** to each automation to target only the traces that matter: specific routes, customer tiers, low-confidence outputs, or error conditions. The UI calls this "SQL filter"; the REST API field is `filter`.
 - Replace LLM-as-judge with code-based checks for deterministic criteria: JSON schema validity, regex/keyword checks, length constraints, exact match, string distance, required citations, valid tool calls, and business-rule checks.
 - Consolidate multiple LLM-as-judge dimensions into fewer calls when the same context is sent repeatedly.
+
+> **Note:** There is no `skip_logging` option in Braintrust online scorer automations. Every scorer execution that fires writes a child span. The only levers to reduce scorer span volume are sampling rate, SQL filter, and scope.
 
 Keep LLM-as-judge when the dimension is genuinely subjective: helpfulness, coherence, factuality, safety, style, or complex rubric grading.
 
