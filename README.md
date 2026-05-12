@@ -6,7 +6,7 @@ A collection of agent skills for working with [Braintrust](https://braintrust.de
 
 | Skill | Purpose |
 |---|---|
-| `bt-flywheel` | Continuously improve Braintrust-backed AI agents by mining traces, updating datasets/scorers/code, running evals, and emitting Act recommendations. |
+| `bt-flywheel` | Continuously improve Braintrust-backed AI agents by mining traces, updating measurement/datasets/code/instrumentation, running evals, and emitting portable exit handoffs. |
 | `bt-cost-optimizer` | Analyze Braintrust logs, scorers, Topics, Gateway/provider spend, datasets, and experiments to recommend safe cost optimizations. |
 
 Install each skill by copying or installing the full directory under `skills/<skill-name>/`; references, scripts, and agent metadata are part of the skill.
@@ -26,18 +26,15 @@ Do not add `README.md` files inside individual skill directories by default. Kee
 
 ### What it does
 
-The flywheel guides you through an 8-phase improvement loop:
+The flywheel guides you through a 5-phase improvement loop:
 
 1. **Orient** — Resolve project config, establish goal and baseline experiment
-2. **Discover** — Mine production traces for errors, low scores, latency outliers, and coverage gaps
-3. **Diagnose** — Route to what needs changing: scorer, dataset, agent code, or exit if healthy
-4. **Curate** — Add production examples to datasets, update scorers
-5. **Iterate** — Edit agent code based on findings
-6. **Eval** — Run evals with smoke test first
-7. **Analyze** — Compare new vs baseline experiment
-8. **Loop** — Route back to the right phase, or exit when improved
+2. **Discover** — Mine production traces broadly for errors, scores, search clusters, topics, latency/cost, behavior, and coverage gaps
+3. **Diagnose** — Route to what needs changing: measurement/scorer, dataset, agent code, instrumentation, or exit if healthy
+4. **Improve** — Apply the artifact-specific route: measurement, dataset, agent, or instrumentation
+5. **Verify & Decide** — Run smoke/full evals, compare to baseline, inspect regressions, route another loop or exit
 
-On exit, the skill writes evidence-backed Act recommendations into `bt-flywheel-summary.json`. Common action types include `pull_request`, `pr_comment`, `issue`, `slack`, `jira`, `linear`, `deployment_gate`, `rollback`, `labeling_task`, `rerun_later`, `webhook`, and `none`. The calling workflow decides which side effects to execute.
+On exit, the skill writes an adapter-neutral handoff into `bt-flywheel-summary.json`. It includes outcome, severity, blocking status, confidence, findings, changes, verification, structured links, local artifacts, and intent-based `next_steps`. The calling workflow maps those next steps to local review, CI, GitHub, Slack, Jira/Linear, app UI, release gates, webhooks, or no side effect.
 
 Works in interactive dev sessions, CI pipelines, scheduled/cron contexts, post-deploy checks, incident follow-up, and other agent harnesses.
 
@@ -49,7 +46,7 @@ Works in interactive dev sessions, CI pipelines, scheduled/cron contexts, post-d
 2. Give the agent repository access, `bt` CLI access, Braintrust credentials, and project context.
 3. Ask the agent to follow `skills/bt-flywheel/SKILL.md`.
 4. Expect `bt-flywheel-summary.json` and `bt-flywheel-narrative.md` on exit.
-5. Let the surrounding harness decide whether to open a PR, issue, Slack message, Jira/Linear ticket, or do nothing based on `recommended_actions`.
+5. Let the surrounding harness decide whether to open a PR, issue, Slack message, Jira/Linear ticket, release gate, app notification, or do nothing based on `outcome`, `blocking`, and `next_steps`.
 
 The skill should not depend on a specific coding agent. Agent-specific files such as `.claude/skills/`, `.cursor/`, `AGENTS.md`, or CLI prompts are integration details.
 
@@ -63,8 +60,8 @@ The skill should not depend on a specific coding agent. Agent-specific files suc
 | Summary schema | Supported | `bt-flywheel-summary.json` output contract |
 | GitHub Actions examples | Maintained examples | Copy into caller repos; no reusable workflow contract |
 | Codex / Cursor / OpenCode examples | Templates | Use as starting points; adapt to each runner's current CLI/auth model |
-| Slack / Jira / Linear | Recommendation only | The skill emits `recommended_actions`; downstream harnesses execute them |
-| Webhooks | Recommendation only | Use `type: "webhook"` plus `webhook_url_env`; downstream harnesses own secrets and delivery |
+| Slack / Jira / Linear | Handoff only | The skill emits adapter-neutral `next_steps`; downstream harnesses map and execute them |
+| Webhooks | Handoff only | Use caller-owned configuration; never put raw webhook URLs in the handoff |
 | Online flywheel scorers | Best-effort portable | Assumes trace spans expose shell/edit/write events with names similar to `Bash`, `Terminal`, `Edit`, or `Write` |
 
 ## bt-cost-optimizer
@@ -160,17 +157,17 @@ See [`examples/bt-flywheel/flywheel-caller.yml`](examples/bt-flywheel/flywheel-c
 
 The same skill can be invoked from many harnesses:
 
-| Trigger | Typical Act recommendation |
+| Trigger | Typical handoff intent |
 |---|---|
-| Manual local dev session | Summary or PR after review |
-| Scheduled weekly improvement job | PR if code changed, issue if follow-up needed |
-| Post-deploy verification | Issue or Slack on regression, none if healthy |
-| Braintrust score degradation alert | Issue/ticket with trace evidence |
-| New production topic cluster | Dataset curation issue or PR |
-| PR comment command like `/flywheel` | PR update or review comment |
-| Release gate | Block/retry on regression, none if healthy |
-| Incident retrospective | Jira/Linear ticket with trace links and eval gaps |
-| Dataset refresh cadence | Dataset update plus validation eval |
+| Manual local dev session | `review_change`, `investigate`, or `no_action` |
+| Scheduled weekly improvement job | `review_change` if changes were made, `investigate` if follow-up is needed |
+| Post-deploy verification | `block_release`, `notify`, or `no_action` |
+| Braintrust score degradation alert | `investigate` with trace evidence |
+| New production topic cluster | `label_data`, `review_change`, or `investigate` |
+| PR comment command like `/flywheel` | `review_change` or `notify` |
+| Release gate | `block_release`, `rerun`, or `no_action` |
+| Incident retrospective | `investigate` with trace links and eval gaps |
+| Dataset refresh cadence | `review_change` plus validation eval |
 
 ---
 

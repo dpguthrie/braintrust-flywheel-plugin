@@ -103,7 +103,7 @@ jobs:
             When complete, write bt-flywheel-summary.json and bt-flywheel-narrative.md
             to the working directory. Do not directly create PRs, issues, Slack messages,
             Jira tickets, Linear tickets, webhooks, deployment gates, or rollbacks.
-            Put any recommended follow-up in recommended_actions.
+            Put any recommended follow-up in next_steps.
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           BRAINTRUST_API_KEY: ${{ secrets.BRAINTRUST_API_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
@@ -143,8 +143,8 @@ jobs:
         if: always()
         run: |
           SUMMARY="bt-flywheel-summary.json"
-          RECOMMENDED_TYPES=""
-          PRIMARY_PR_TITLE=""
+          NEXT_STEP_INTENTS=""
+          PRIMARY_REVIEW_TITLE=""
           PRIMARY_ISSUE_TITLE=""
           ISSUE_IDEMPOTENCY_KEY=""
 
@@ -153,11 +153,11 @@ jobs:
           }
 
           if [ -f "$SUMMARY" ]; then
-            RECOMMENDED_TYPES="$(jq -r '[.recommended_actions[]?.type] | join(",")' "$SUMMARY" 2>/dev/null || true)"
-            PRIMARY_PR_TITLE="$(jq -r 'first(.recommended_actions[]? | select(.type == "pull_request") | .title) // empty' "$SUMMARY" 2>/dev/null || true)"
-            PRIMARY_ISSUE_TITLE="$(jq -r 'first(.recommended_actions[]? | select(.type == "issue") | .title) // empty' "$SUMMARY" 2>/dev/null || true)"
-            ISSUE_IDEMPOTENCY_KEY="$(jq -r 'first(.recommended_actions[]? | select(.type == "issue") | .idempotency_key) // empty' "$SUMMARY" 2>/dev/null || true)"
-            jq -r 'first(.recommended_actions[]? | select(.type == "issue") | .body_markdown) // empty' "$SUMMARY" 2>/dev/null > /tmp/recommended-issue.md || true
+            NEXT_STEP_INTENTS="$(jq -r '[.next_steps[]?.intent] | join(",")' "$SUMMARY" 2>/dev/null || true)"
+            PRIMARY_REVIEW_TITLE="$(jq -r 'first(.next_steps[]? | select(.intent == "review_change" or .suggested_destination == "code_review") | .title) // empty' "$SUMMARY" 2>/dev/null || true)"
+            PRIMARY_ISSUE_TITLE="$(jq -r 'first(.next_steps[]? | select(.intent == "investigate" or .intent == "label_data" or .suggested_destination == "issue_tracker") | .title) // empty' "$SUMMARY" 2>/dev/null || true)"
+            ISSUE_IDEMPOTENCY_KEY="$(jq -r 'first(.next_steps[]? | select(.intent == "investigate" or .intent == "label_data" or .suggested_destination == "issue_tracker") | .idempotency_key) // empty' "$SUMMARY" 2>/dev/null || true)"
+            jq -r 'first(.next_steps[]? | select(.intent == "investigate" or .intent == "label_data" or .suggested_destination == "issue_tracker") | .body_markdown) // empty' "$SUMMARY" 2>/dev/null > /tmp/recommended-issue.md || true
           fi
 
           if [ ! -s /tmp/recommended-issue.md ]; then
@@ -169,20 +169,20 @@ jobs:
           SHOULD_PR="false"
           SHOULD_ISSUE="false"
 
-          if [ "$HAS_CHANGES" = "true" ] && { [ -z "$RECOMMENDED_TYPES" ] || printf "%s" "$RECOMMENDED_TYPES" | grep -q "pull_request"; }; then
+          if [ "$HAS_CHANGES" = "true" ] && { [ -z "$NEXT_STEP_INTENTS" ] || printf "%s" "$NEXT_STEP_INTENTS" | grep -Eq "(^|,)review_change(,|$)"; }; then
             SHOULD_PR="true"
           fi
-          if printf "%s" "$RECOMMENDED_TYPES" | grep -Eq "(^|,)issue(,|$)"; then
+          if printf "%s" "$NEXT_STEP_INTENTS" | grep -Eq "(^|,)(investigate|label_data)(,|$)"; then
             SHOULD_ISSUE="true"
           fi
 
           {
             echo "should_pr=$SHOULD_PR"
             echo "should_issue=$SHOULD_ISSUE"
-            echo "pr_title=$(sanitize_title "${PRIMARY_PR_TITLE:-Flywheel: Agent optimizations (${DATE})}")"
+            echo "pr_title=$(sanitize_title "${PRIMARY_REVIEW_TITLE:-Flywheel: Agent optimizations (${DATE})}")"
             echo "issue_title=$(sanitize_title "${PRIMARY_ISSUE_TITLE:-Flywheel: Follow-up needed (${DATE})}")"
             echo "issue_idempotency_key=$ISSUE_IDEMPOTENCY_KEY"
-            echo "recommended_types=$RECOMMENDED_TYPES"
+            echo "next_step_intents=$NEXT_STEP_INTENTS"
           } >> "$GITHUB_OUTPUT"
 
       - name: Create pull request
@@ -235,7 +235,7 @@ jobs:
         env:
           SHOULD_PR: ${{ steps.action.outputs.should_pr }}
           SHOULD_ISSUE: ${{ steps.action.outputs.should_issue }}
-          RECOMMENDED_TYPES: ${{ steps.action.outputs.recommended_types }}
+          NEXT_STEP_INTENTS: ${{ steps.action.outputs.next_step_intents }}
         run: |
           {
             if [ "$SHOULD_PR" = "true" ]; then
@@ -248,7 +248,7 @@ jobs:
               echo "## Flywheel Run - No Follow-up Action Executed"
             fi
             echo ""
-            echo "Recommended action types: ${RECOMMENDED_TYPES:-none}"
+            echo "Next step intents: ${NEXT_STEP_INTENTS:-none}"
             echo ""
             cat /tmp/narrative.md 2>/dev/null || echo "No narrative generated."
           } >> "$GITHUB_STEP_SUMMARY"

@@ -1,44 +1,43 @@
 ---
 name: bt-flywheel
-description: Use when improving an AI agent built on Braintrust — starting a dev session, running a CI/eval pipeline, on a scheduled cadence, after a deployment, or when production scores have degraded.
+description: Improve Braintrust-backed AI agents through an evidence-backed loop over production traces, measurement, datasets, code changes, evals, and portable exit handoffs. Use when starting an agent-improvement session, running CI/scheduled/post-deploy flywheels, investigating production score degradation, finding eval coverage gaps, or deciding whether to add/update scorers, datasets, instrumentation, or agent behavior.
 ---
 
 # Braintrust Agent Improvement Flywheel
 
-Eight-phase cycle: Orient → Discover → Diagnose → Curate → Iterate → Eval → Analyze → Loop. On exit, emit non-executing Act recommendations for the calling harness.
+Five-phase cycle: Orient → Discover → Diagnose → Improve → Verify & Decide. On exit, write a portable handoff contract for the caller; do not execute external side effects.
 
-## When to Use
-
-- Starting a session to improve an agent ("let's improve my agent", "run the flywheel")
-- At the start of a CI/eval pipeline run
-- On a scheduled cadence (cron or weekly improvement cycle)
-- After deploying a change to measure its impact
-- When something degraded in production and you need to diagnose and fix it
-
-## The Three Artifacts
+## The Four Artifacts
 
 Every phase can surface the need to change any of these:
 
 | Artifact | Where it lives | How to change |
 |---|---|---|
 | **Agent** | Customer codebase (code files) | Code edits |
-| **Scorers** | Braintrust (`bt functions`) or codebase | `bt functions push` or code edit |
+| **Measurement** | Braintrust scorers/facets/classifiers or codebase | `bt functions push` or code edit |
 | **Datasets** | Braintrust | `bt datasets create/update/view/list` |
+| **Instrumentation** | Customer codebase/logging config | Code edits |
+
+## Operating Principles
+
+- Gather evidence before edits. Use production traces, eval runs, scorer behavior, and local code context to form hypotheses before changing any artifact.
+- Treat query examples as starting points, not a checklist. Discovery should adapt to the project schema, goal, traffic, recent changes, user reports, and surprising rows.
+- Treat measurement as part of the system. If a repeated failure mode is not visible in scores, tags, facets, datasets, or evals, route to a new or updated scorer/classifier/facet before optimizing blindly.
+- Prefer the smallest targeted change that the evidence supports. Avoid unrelated refactors, broad prompt rewrites, and dataset churn.
+- Keep self-improvement bounded: smoke test before full evals, cap loops, log decisions, and leave external side effects to the caller.
 
 ## Reference Files
 
 Load these when executing the relevant phase:
 
-- `references/bt-sql-patterns.md` — SQL query templates for Discover and Analyze
+- `references/bt-sql-patterns.md` — SQL query templates for Discover and Verify & Decide
 - `references/bt-view-patterns.md` — `bt view` command patterns
 - `references/bt-eval-patterns.md` — eval invocation patterns
 - `references/bt-functions-patterns.md` — scorer, prompt, and dataset CLI patterns
 - `references/bt-sync-patterns.md` — bulk log/experiment/dataset sync (pull/push)
 - `references/bt-topics-patterns.md` — Topics automation (input clustering, classification)
 - `scripts/bt-curate-patterns.py` — ground truth labeling, split assignment, dataset row construction/upsert
-- `references/bt-flywheel-output-templates.md` — `bt-flywheel-summary.json` and `bt-flywheel-narrative.md` templates
-
----
+- `references/bt-flywheel-output-templates.md` — `bt-flywheel-summary.json` handoff and `bt-flywheel-narrative.md` templates
 
 ## Detecting Interaction Mode
 
@@ -49,11 +48,9 @@ Before starting, check for autonomous mode signals in order:
 3. `FLYWHEEL_AUTONOMOUS=true` environment variable
 4. Stdin is not a TTY (non-interactive shell context)
 
-If any signal is present: **autonomous mode** — suppress all gates, log all decisions, write summary and recommended actions to `bt-flywheel-summary.json` on exit.
+If any signal is present: **autonomous mode** — suppress all gates, log all decisions, write `bt-flywheel-summary.json` and `bt-flywheel-narrative.md` on exit.
 
 Otherwise: **interactive mode** — present plans before irreversible actions and wait for confirmation.
-
----
 
 ## Phase 1: Orient
 
@@ -135,60 +132,69 @@ Braintrust URLs (URL-encode spaces as `%20`):
 - Experiment: `https://www.braintrust.dev/app/<org>/p/<project-name>/experiments/<experiment-id>`
 - Trace: `https://www.braintrust.dev/app/<org>/p/<project-name>/r/<trace-id>`
 
----
-
 ## Phase 2: Discover
 
-Mine production traces for patterns the agent has not been evaluated on.
+Mine production traces for patterns the agent has not been evaluated on. The goal is a truthful map of production behavior, not merely running prewritten queries.
 
-Load `references/bt-sql-patterns.md`. Run each discovery query, substituting `<PROJECT_ID>` and discovered column names. Use the 7-day window as default; adjust if the project has low traffic.
+Load `references/bt-sql-patterns.md`; use its examples for Braintrust SQL syntax, data shapes, `search()`, `MATCH`, `ANY_SPAN()`, score unpivoting, and aggregation patterns. Load `references/bt-topics-patterns.md` if Topics or facets are available. Use a 7-day window by default, expand for low traffic, and always keep `project_logs()` queries bounded by time/range or specific IDs.
 
-**Step 1 — Errors:** Find traces with errors.
+Run discovery as an iterative hypothesis loop:
 
-**Step 2 — Low scores:** For each discovered score column, find traces scoring ≤ 0.5.
+1. Start broad: traffic volume, error rate, score coverage/distribution, latency/cost, tags/facets/topics, tool/handoff patterns, and recent model/prompt/deploy metadata.
+2. Generate follow-up queries from the goal, recent changes, schema fields, user complaints, surprising aggregates, and trace-level evidence. Do not stop after the canned examples if the data suggests another direction.
+3. Use text search when the suspected pattern is lexical or buried in free-form fields. Seed `search('<term>')` or field-level `MATCH` terms from error messages, tool names, refusals, user language, output-format failures, policy words, domain concepts, or newly observed failure labels.
+4. Segment results by dimensions that could explain variance: model, prompt/version, route, tool, user/customer segment, topic/facet/classification, tag, environment, hour/day, deployment marker, and eval dataset split.
+5. Compare cohorts rather than only reading outliers: failing vs. passing, recent vs. older windows, high-cost vs. normal, production vs. baseline experiment, and represented vs. missing dataset clusters.
+6. Drill into both representative and extreme traces. Load `references/bt-view-patterns.md` and inspect full span trees before attributing root cause.
+7. Keep a running list of missing measurements. If a repeated failure mode is not captured by an existing score, tag, facet, or dataset field, carry it into Diagnose as a measurement gap.
 
-**Step 3 — High latency:** Find traces where `metrics.duration_ms > 10000`.
+Explore evidence planes including reliability, quality, coverage, behavior/tooling, performance/cost, change correlation, and eval alignment.
 
-**Step 4 — Score distribution:** GROUP BY score value to detect bimodal distributions. A distribution stuck at 0 or 1 strongly suggests the scorer is broken or its criteria are misaligned.
+Before Diagnose, write findings with enough detail to support or reject root causes:
 
-**Step 5 — Facet distribution** (if facets discovered): GROUP BY facet column to understand input topic coverage and spot underrepresented categories. Alternatively, load `references/bt-topics-patterns.md` and use `bt topics status --full` for Topics automation's clustering view.
-
-**Step 6 — Drill into interesting traces:** Load `references/bt-view-patterns.md` and use `bt view trace` to inspect the full span tree for any trace IDs worth investigating.
-
-**Step 7 — Pull baseline experiment context:** Read recent rows from the baseline experiment to understand what inputs evals are currently testing vs. what's in production:
-```bash
-bt sql "SELECT id, scores.\"<SCORE_COL>\", output FROM experiment('<baseline-experiment-id>') LIMIT 20"
-```
-
-**Compile findings** into a structured report before proceeding to Diagnose:
-```
+```text
 DISCOVER FINDINGS:
-- Error rate: X/Y root spans with errors in last 7 days
-- Low score rate: X/Y traces scoring ≤ 0.5 on <SCORE_COL>
-- Score distribution: [normal / bimodal / all-zero / all-one]
-- High latency traces: N found (max duration: Xms)
-- Notable patterns: [specific edge cases, input clusters, failure types]
-- Production vs. eval gaps: [inputs appearing in prod not represented in datasets]
+- Window and traffic: <time range>, <N traces/spans>, low-traffic caveats
+- Strongest signals: <aggregate/statistic> with query/trace evidence
+- Failure modes: <specific behavior>, example trace IDs/URLs, affected cohorts
+- Healthy cohorts: <what works>, so fixes stay targeted
+- Production vs eval gaps: <missing inputs/behaviors/labels>
+- Measurement gaps: <failure mode not scored/tagged/faceted>, proposed scorer/facet
+- Confidence and unknowns: <what still needs trace inspection or human labels>
 ```
-
----
 
 ## Phase 3: Diagnose
 
-Synthesize Discover findings and determine what needs to change. This is the routing intelligence of the flywheel — reason carefully before producing an action plan.
+Synthesize Discover findings and determine what needs to change. This is the routing intelligence of the flywheel — reason carefully before producing an action plan. The examples below are diagnostic prompts, not a closed taxonomy.
+
+For each candidate root cause, name the supporting evidence, counterevidence, confidence, and artifact to change. Prefer "measure first" when production shows a real problem but current evals/scorers cannot observe it.
+
+**Is this a measurement gap or new scorer/facet needed?**
+- Signs: repeated production failure is visible in traces but no score, tag, facet, or dataset field separates it
+- Signs: humans can describe "bad" behavior but existing eval metrics pass it
+- Signs: a new tool, handoff, output contract, policy, or domain constraint creates a new correctness dimension
+- Route: create or update scorer/classifier/facet criteria before using the metric as an optimization target
 
 **Is this a scorer problem?**
 - Signs: production shows behaviors that should score badly but score well (or vice versa)
 - Signs: bimodal score distribution found in Discover (all 0s or all 1s)
 - Signs: scorer criteria reference agent behaviors the agent no longer exhibits
+- Signs: scorer disagrees with human labels or trace inspection on representative examples
 
 **Is this a dataset gap?**
 - Signs: failure modes or edge cases from production don't appear in existing dataset examples
 - Signs: input patterns in production not represented in evals
+- Signs: evals improve while production cohorts remain bad
 
 **Is this an agent problem?**
 - Signs: agent behaves incorrectly on inputs that datasets and scorers already cover well
 - Signs: clear behavioral error (wrong tool call, unexpected refusal, wrong output format, hallucinated tool)
+- Signs: failures cluster around a prompt/tool/orchestration path that local code owns
+
+**Is this instrumentation or observability drift?**
+- Signs: missing root inputs/outputs, inconsistent metadata, renamed score columns, broken trace linkage, or spans that hide tool arguments
+- Signs: production behavior cannot be reconstructed well enough to curate data or debug
+- Route: fix logging/instrumentation before concluding the agent is healthy
 
 **Is this a structural change needed?**
 - Signs: the agent was recently changed significantly (new tools, output format, trajectory restructured)
@@ -196,7 +202,7 @@ Synthesize Discover findings and determine what needs to change. This is the rou
 
 **Nothing actionable?**
 - Signs: production looks healthy, scores are good, no anomalies, no coverage gaps
-- Action: report healthy status and **exit the flywheel**. In autonomous mode, write healthy status to `bt-flywheel-summary.json` before exiting.
+- Route: report healthy status and **exit the flywheel**. In autonomous mode, write healthy status to `bt-flywheel-summary.json` before exiting.
 
 Produce a prioritized action plan listing which artifacts to change and in what order. Multiple conditions can apply — list them in priority order and execute sequentially.
 
@@ -204,166 +210,71 @@ Produce a prioritized action plan listing which artifacts to change and in what 
 
 **In autonomous mode**: Log the full action plan and proceed immediately.
 
----
+## Phase 4: Improve
 
-## Phase 4: Curate
+Apply the artifact route chosen in Diagnose. Multiple routes can apply; execute them in priority order with measurement/instrumentation fixes before optimizing agent behavior.
 
-Execute dataset and scorer changes identified in the Diagnose plan.
+**In interactive mode**: Present the planned artifact changes and wait for confirmation before irreversible writes.
+**In autonomous mode**: Apply the action plan and log each change with evidence, files/functions touched, and why it was safe.
 
-### Updating Datasets
+### Measurement Route
 
-Load `references/bt-functions-patterns.md` if you need dataset CLI examples. Load `references/bt-sql-patterns.md` only when you need SQL filtering over dataset content.
+Load `references/bt-functions-patterns.md`.
 
-#### Step 1 — Collect candidates (balanced)
+Create or update a scorer, classifier, or facet when Diagnose found a measurement gap or stale criteria:
 
-Pull both failing *and* passing examples so the dataset doesn't skew toward hard cases only.
+1. Define the failure mode in observable terms: what fields/spans prove pass, partial credit, fail, and "not applicable"?
+2. Collect a small calibration set with positive, negative, borderline, and adversarial traces.
+3. Choose the simplest reliable implementation: deterministic code for structural checks, LLM judge for semantic quality, or a hybrid with explicit rubrics.
+4. Validate against the calibration set before trusting the score. If labels are uncertain, set outcome `blocked` or `needs_work` and add a `label_data` next step.
+5. Add the measurement to the eval path and verify it is informative rather than all-zero/all-one.
+
+If the function lives in Braintrust, read it first with `bt functions view <slug> -p <project-name>`, make a targeted local change, then push with `bt functions push -p <project-name> --file <path>`. If it lives in the codebase, edit the scorer file directly.
+
+### Dataset Route
+
+Load `references/bt-functions-patterns.md` for dataset CLI examples. Load `references/bt-sql-patterns.md` only when SQL filtering over dataset content is needed.
+
+Pull balanced failing and passing candidates so the dataset does not skew toward hard cases only:
 
 ```bash
-# Failing examples (low scores or errors)
 bt sql "SELECT id, input, output, scores.\"<SCORE_COL>\" FROM project_logs('<PROJECT_ID>')
         WHERE scores.\"<SCORE_COL>\" <= 0.5 AND created >= NOW() - INTERVAL 7 day
         ORDER BY RANDOM() LIMIT 50"
 
-# Passing examples (same time window)
 bt sql "SELECT id, input, output, scores.\"<SCORE_COL>\" FROM project_logs('<PROJECT_ID>')
         WHERE scores.\"<SCORE_COL>\" >= 0.8 AND created >= NOW() - INTERVAL 7 day
         ORDER BY RANDOM() LIMIT 50"
 ```
 
-Target roughly 1:1 ratio. If passing examples are scarce (e.g. bimodal scorer issue), proceed with whatever is available.
+Inspect candidate traces with `bt view trace --object-ref project_logs:<project-id> --trace-id <id> --json` and extract the root input. Do not use bad production output as `expected`; use `scripts/bt-curate-patterns.py` for generated ground truth, deterministic train/validation splits, stable row IDs, and provenance metadata. In interactive mode, show a sample of generated labels before writing.
 
-#### Step 2 — Inspect traces and extract inputs
+Use `bt datasets create/update` with `--id-field id`. If the agent interface changed, inspect and update stale rows so evals fail only for real behavior gaps, not obsolete data shape.
 
-For each candidate trace ID, retrieve the full span tree to get the actual agent input:
+### Agent Route
 
-```bash
-bt view trace --object-ref project_logs:<project-id> --trace-id <id> --json
-```
+Edit the agent codebase only after trace/eval evidence points to behavior the agent owns. Keep the change targeted: system prompt, tool schema, output format/parser, routing/trajectory logic, or retrieval/tool-use behavior. Before editing, read the relevant files and local instructions. Do not run `git add` or `git commit`; the caller owns git operations.
 
-Extract the root span's `input` field — not the agent's output, which may be wrong.
+### Instrumentation Route
 
-#### Step 3 — Auto-label ground truth
+Fix instrumentation when production behavior cannot be reconstructed well enough to diagnose, curate, or verify. Typical changes: restore root input/output logging, add compact metadata used for slicing, expose tool arguments/results safely, repair trace IDs, or normalize renamed score/facet fields. Keep large payloads out of inline logs unless they are required for eval/debugging.
 
-**Do not use the production output as `expected`** for failing examples. Use an LLM judge to generate correct expected values. Load `scripts/bt-curate-patterns.py` for the `generate_ground_truth` function (uses `gpt-4o`).
+## Phase 5: Verify & Decide
 
-For passing examples where the production output looks correct, you may use it directly as `expected` — but spot-check a few first.
+Run evals, compare against baseline, inspect regressions, route the next loop, and write the exit handoff when stopping.
 
-**In interactive mode**: Show a sample of generated ground truth labels before inserting. Ask for confirmation or spot corrections.
+### Verify
 
-**In autonomous mode**: Log the labeler model used and insert without confirmation.
+Load `references/bt-eval-patterns.md`. Find eval files from project instructions, `find . -name "eval_*.py" -o -name "eval_*.ts" | grep -v node_modules | grep -v .venv`, or an `evals/` directory.
 
-#### Step 4 — Assign train/validation splits
-
-Use deterministic split assignment so the same row always lands in the same split across iterations. Load `scripts/bt-curate-patterns.py` for the `assign_split` function (SHA-256 hash of `seed:row_id`, 80/20 split).
-
-#### Step 5 — Insert with metadata
-
-Tag each row with split and provenance metadata. Load `scripts/bt-curate-patterns.py` for `build_dataset_payload()` and `insert_labeled_rows()`, including a stable `id` field plus the `bucket`, `split`, `source_trace_id`, and `flywheel_iteration` metadata fields. The helper defaults to dry-run and prints CLI-ready JSON rows; write to Braintrust only after the relevant interactive confirmation or autonomous action plan has been logged.
-
-Use the `bt datasets` CLI for all dataset writes:
-
-```bash
-# Build and review rows without writing
-python skills/bt-flywheel/scripts/bt-curate-patterns.py \
-  --labeled-rows labeled_rows.json \
-  --project-name "<project-name>" \
-  --dataset-name "<dataset-name>" \
-  --project-id "<project-id>" \
-  --iteration "<flywheel-iteration>" > curated_rows.json
-
-# If the dataset does not exist yet
-bt datasets create "<dataset-name>" -p "<project-name>" --file curated_rows.json --id-field id
-
-# Upsert rows into an existing dataset by stable record id
-bt datasets update "<dataset-name>" -p "<project-name>" --file curated_rows.json --id-field id
-
-# Or let the helper execute the same CLI write after confirmation
-python skills/bt-flywheel/scripts/bt-curate-patterns.py \
-  --labeled-rows labeled_rows.json \
-  --project-name "<project-name>" \
-  --dataset-name "<dataset-name>" \
-  --project-id "<project-id>" \
-  --iteration "<flywheel-iteration>" \
-  --execute
-```
-
-`bucket` is `"failing"` for low-score/error examples, `"passing"` for high-score examples.
-
-#### Step 6 — Scope evals to validation split
-
-Once rows have split metadata, scope Phase 6 Eval to the validation split. Load `scripts/bt-curate-patterns.py` for the filter snippet. Use the train split for smoke runs and iterative tuning; validation only for the final measurement.
-
----
-
-**Existing dataset updates** (structural changes): If the agent's interface changed, update stale dataset rows to use the new format — otherwise evals fail for the wrong reasons. Inspect current rows first:
-
-```bash
-bt datasets view "<dataset-name>" -p "<project-name>" --json --full --limit 20
-```
-
-For broad filtered reads, `bt sql "SELECT * FROM dataset('<dataset-id>') ..."` is still useful. For routine inspection, creation, and upserts, prefer `bt datasets`.
-
-### Updating Scorers
-
-Load `references/bt-functions-patterns.md`.
-
-If scorer lives in Braintrust:
-1. Read current scorer: `bt functions view <scorer-slug> -p <project-name>`
-2. Identify the specific criteria that are wrong or stale
-3. Make targeted changes — only fix what Diagnose identified
-4. Push update: `bt functions push -p <project-name> --file <path>`
-
-If scorer lives in the codebase: edit the scorer file directly. Changes should be minimal and targeted.
-
-**In interactive mode**: Present planned changes. Wait for confirmation before any writes.
-
-**In autonomous mode**: Apply changes and log what was changed and why.
-
----
-
-## Phase 5: Iterate
-
-Edit the agent codebase based on the Diagnose plan.
-
-Make targeted changes only — fix the specific problems Diagnose identified. Do not refactor or improve things outside the scope of the findings.
-
-Common change types:
-- **System prompt**: edit the prompt string in agent config/code
-- **Tool definitions**: add, remove, or modify tool schemas
-- **Output format**: update expected output structure or parser
-- **Trajectory/orchestration**: update routing logic or agent flow
-
-Before editing, read the relevant files to understand current structure. Make changes that directly address the Diagnose findings.
-
-**In interactive mode**: Describe the planned code change before making it. Wait for confirmation.
-
-**In autonomous mode**: Apply the change and log what was changed and why (file, what changed, production evidence, experiment ID). Do not run `git add` or `git commit` — the calling workflow owns all git operations.
-
----
-
-## Phase 6: Eval
-
-Run evals against the current agent + scorer + dataset state.
-
-Load `references/bt-eval-patterns.md`.
-
-**Finding eval files:**
-1. Check project `CLAUDE.md` for documented eval file paths
-2. Search: `find . -name "eval_*.py" -o -name "eval_*.ts" | grep -v node_modules | grep -v .venv`
-3. Check for `evals/` directory: `ls evals/ 2>/dev/null`
-
-**Split scoping**: If the dataset has `split` metadata, run smoke tests against `train` and full evals against `validation`.
-
-**Run a smoke test first** (check `bt eval --help` to confirm `--first` is available):
+If the dataset has `split` metadata, use train for smoke/iteration and validation for the final measurement. Always run a smoke eval before a full eval:
 
 ```bash
 set -a && source .env && set +a
 bt eval --first 20 <eval_file>
 ```
 
-If smoke run shows near-zero scores: stop. Go back to Phase 4 or Phase 5 — something is fundamentally broken.
-
-**Run full eval:**
+If smoke scores are near zero or the eval is structurally broken, stop and route back to Improve. If smoke passes, run the full eval and capture the experiment ID/URL:
 
 ```bash
 set -a && source .env && set +a
@@ -372,113 +283,57 @@ bt eval <eval_file>
 braintrust eval --env-file .env <eval_file>
 ```
 
-**Capture the experiment ID and URL** from `bt eval` output — required for Phase 7:
-```
-experiment_url = https://www.braintrust.dev/app/<org>/p/<project-name>/experiments/<experiment-id>
-```
+### Compare
 
-**In interactive mode**: Ask — smoke run first? full eval? run and don't ask again? skip?
+Load `references/bt-sql-patterns.md` for experiment query templates and `references/bt-view-patterns.md` for trace drill-in. Compare new vs baseline score statistics, check scorer distributions, and inspect regressions with full traces:
 
-**In autonomous mode**: Always run smoke first. If smoke passes, run full eval.
-
----
-
-## Phase 7: Analyze
-
-Compare the new experiment to the baseline.
-
-Load `references/bt-sql-patterns.md` for experiment query templates and `references/bt-view-patterns.md` for trace drill-in commands.
-
-**Step 1 — Score statistics for both experiments:**
 ```bash
 bt sql "SELECT AVG(scores.\"<SCORE_COL>\") AS avg, MIN(scores.\"<SCORE_COL>\") AS min FROM experiment('<new-id>')"
 bt sql "SELECT AVG(scores.\"<SCORE_COL>\") AS avg, MIN(scores.\"<SCORE_COL>\") AS min FROM experiment('<baseline-id>')"
-```
-
-**Step 2 — Find regressions:**
-```bash
 bt sql "SELECT id, scores.\"<SCORE_COL>\" FROM experiment('<new-id>') WHERE scores.\"<SCORE_COL>\" < 0.5"
 ```
 
-**Step 3 — Scorer distribution check:**
-```bash
-bt sql "SELECT scores.\"<SCORE_COL>\", COUNT(*) as count FROM experiment('<new-id>') GROUP BY scores.\"<SCORE_COL>\" ORDER BY scores.\"<SCORE_COL>\""
-```
+Compile a verdict with metric deltas, regression count, scorer health, new failure patterns, remaining dataset gaps, and confidence.
 
-**Step 4 — Drill into regressions:** For each regressed trace ID, construct its URL and attempt to fetch its span tree:
-```bash
-bt view trace --object-ref project_logs:<project-id> --trace-id <id> --json
-# If not found via project_logs, try the experiment object ref:
-bt view trace --object-ref experiment:<experiment-id> --trace-id <id> --json
-```
+### Decide
 
-**Compile verdict:**
-```
-ANALYZE VERDICT:
-- <SCORE_COL>: baseline avg=X → new avg=Y (delta: Z)
-- Experiment: <url>
-- Regressions: N rows scoring < 0.5
-  - <trace-id>: score=X — <url>
-- Scorer health: [normal distribution / bimodal — possible scorer issue]
-- New failure patterns: [describe if any]
-- Datasets still missing: [describe uncovered cases if any]
-```
+When multiple conditions apply, address them in this priority order:
 
----
-
-## Phase 8: Loop
-
-Route based on the Analyze verdict. When multiple conditions apply, address them in this priority order:
-
-| Condition | Next action |
+| Condition | Next route |
 |---|---|
-| Scorer distribution stuck at 0/1 or clearly wrong | → Phase 4: Curate (scorer fix — highest priority) |
-| New failure pattern emerged, not in datasets | → Phase 2: Discover (focused) → Phase 4: Curate |
-| Metric improved on validation but not on train | → Phase 4: Curate (expand training set — likely overfitting) |
-| Metric didn't move despite agent change | → Phase 5: Iterate (find a different fix) |
-| Metric improved AND new edge cases found in eval | → Phase 4: Curate (add new cases) → re-run Phase 6: Eval |
-| Datasets don't cover cases found in eval | → Phase 4: Curate (dataset additions) → re-run Phase 6: Eval |
-| Metric improved, no regressions, scorers healthy | **Exit** — set new experiment as baseline, write summary and Act recommendations, exit |
+| Production failure is real but unmeasured | Improve: measurement |
+| Scorer distribution stuck at 0/1 or clearly wrong | Improve: measurement |
+| Trace data cannot support diagnosis | Improve: instrumentation |
+| New failure pattern emerged, not in datasets | Discover focused → Improve: dataset |
+| Metric improved on validation but not on train | Improve: dataset |
+| Metric did not move despite agent change | Improve: agent |
+| Metric improved and new edge cases were found | Improve: dataset → Verify |
+| Datasets do not cover eval-discovered cases | Improve: dataset → Verify |
+| Metric improved, no regressions, measurement healthy | Exit handoff with outcome `improved` |
+| Production healthy and no follow-up needed | Exit handoff with outcome `healthy` |
 
-**In interactive mode**: Present the routing decision and reasoning. Allow the user to override or stop.
+In interactive mode, present the routing decision and let the user override or stop. In autonomous mode, route automatically. If the target metric has not improved after 3 full loop iterations, stop with outcome `no_convergence`.
 
-**In autonomous mode**: Route automatically and log the decision. Write `bt-flywheel-summary.json` and `bt-flywheel-narrative.md` to the working directory root — see `references/bt-flywheel-output-templates.md` for both schemas.
+## Exit Handoff
 
-**Max iterations:** If the metric has not improved after 3 full loop iterations, exit with `loop_decision: "no-convergence"` — do not loop indefinitely.
+Write `bt-flywheel-summary.json` and `bt-flywheel-narrative.md` when stopping in autonomous mode, and present the same content in interactive mode. The handoff is adapter-neutral: it should help a local developer, triggered workflow, GitHub Action, embedded app, or internal orchestrator decide what to do next. Do not open PRs, create issues, send Slack/Jira/Linear messages, call webhooks, block deploys, or trigger rollbacks from the skill itself.
 
----
+Use `references/bt-flywheel-output-templates.md` for the schema and examples. Required handoff concepts:
 
-## Act Recommendations
+- `outcome`: `healthy`, `improved`, `needs_work`, `blocked`, or `no_convergence`
+- `severity`, `blocking`, and `confidence`
+- concise `summary`, evidence-backed `findings`, artifact-specific `changes`, and `verification`
+- structured `links` for Braintrust experiments, traces, queries, docs, or external references
+- structured `artifacts` for local files produced by the run
+- `next_steps` with adapter-neutral intent, priority, title/body, optional suggested destination, and idempotency key
 
-Before exit, choose what a downstream harness should do next. Do not open PRs, create issues, send Slack messages, create Jira/Linear tickets, call webhooks, block deploys, or trigger rollbacks from the skill itself. The skill owns evidence-backed recommendation; the caller owns side effects, permissions, idempotency, and destination-specific policy.
-
-Add `recommended_actions` to `bt-flywheel-summary.json`. Use `references/bt-flywheel-output-templates.md` for the schema.
-
-Choose actions with these defaults:
-
-| Situation | Recommended action |
-|---|---|
-| Codebase changes were made, eval passed, no blocking regressions | `pull_request`, intent `propose_change`, target `github_pr` |
-| Running from an existing PR and no new branch is needed | `pr_comment`, intent `notify`, target `github_pr` |
-| No code changes, but production degradation, dataset gap, scorer issue, setup blocker, or no-convergence needs follow-up | `issue`, intent `investigate`, target `github_issue` |
-| Findings need human ground-truth labels before safe curation | `labeling_task`, intent `label_data`, target `github_issue` or team's labeling system |
-| Urgent degradation or completed autonomous run should notify a team | `slack`, intent `notify`, target `slack` |
-| The downstream team uses Jira or Linear instead of GitHub Issues | `jira` or `linear`, intent `investigate`, target `jira` or `linear` |
-| A release/post-deploy check should block promotion due to regressions | `deployment_gate`, intent `block_release`, target `ci_status`, `blocking: true` |
-| Severe degradation should be reverted rather than improved forward | `rollback`, intent `rollback`, target `ci_status` or `github_issue`, `blocking: true` |
-| Evidence is inconclusive due to low traffic, flaky evals, or missing data | `rerun_later`, intent `rerun`, target `ci_status` or scheduler |
-| The caller should route to an arbitrary external system | `webhook`, intent matching the situation, target `webhook` |
-| Production is healthy and no follow-up is needed | `none`, intent `no_action`, target `none` |
-
-Each action must include `type`, `intent`, `target`, `severity`, `blocking`, title, body, reason, evidence links, `requires_human_review`, and an `idempotency_key` stable enough for the caller to deduplicate repeated scheduled runs. Include `webhook_url_env` on `webhook` actions instead of a raw URL so secrets stay in the caller environment.
-
----
+Prefer intent over destination. Example intents: `no_action`, `review_change`, `investigate`, `label_data`, `rerun`, `notify`, `block_release`, `rollback`. Example suggested destinations: `local_summary`, `code_review`, `issue_tracker`, `chat`, `release_gate`, `scheduler`, `app_ui`, `external_system`, `none`.
 
 ## Success State
 
 The flywheel run is complete when any of the following is true:
 
-1. Loop routes to "exit" — target metric improved, no regressions, scorers healthy
-2. Diagnose exits early with "nothing actionable" — production is already healthy
-3. The user says they are done for this session (interactive mode)
-4. Autonomous mode completes one full loop iteration, routes to "done", and writes summary, narrative, and Act recommendations
+1. Verify & Decide exits with outcome `improved`: target metric improved, no blocking regressions, measurement healthy
+2. Diagnose exits early with outcome `healthy`: production is already healthy
+3. The user says they are done for this session
+4. Autonomous mode completes one full loop iteration, stops, and writes summary, narrative, links, artifacts, and next steps

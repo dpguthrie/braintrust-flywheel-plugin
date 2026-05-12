@@ -1,4 +1,4 @@
 interface:
   display_name: "Braintrust Flywheel"
-  short_description: "Improve Braintrust agents with eval loops"
-  default_prompt: "Use $bt-flywheel to run an evidence-backed improvement loop for my Braintrust agent."
+  short_description: "Improve Braintrust agents with production trace flywheels"
+  default_prompt: "Use $bt-flywheel to run an evidence-backed production trace and eval improvement loop for my Braintrust agent."

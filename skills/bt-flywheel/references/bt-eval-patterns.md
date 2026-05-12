@@ -5,7 +5,7 @@
 - `bt eval` supports `--env-file <PATH>`, but sourcing `.env` manually is preferred — it ensures auth resolves before `load_dotenv()` is called inside eval scripts
 - Prefer `bt eval`; fall back to `braintrust eval` if `bt eval` fails or is unavailable
 - Always run a smoke run (`--first 20`) before a full eval during active iteration — it catches catastrophic failures fast
-- `bt eval` output includes the experiment ID on completion — capture this for the Analyze phase
+- `bt eval` output includes the experiment ID on completion — capture this for Verify & Decide
 
 ---
 
@@ -32,7 +32,7 @@ set -a && source .env && set +a
 bt eval --first 20 <eval_file>
 ```
 
-If smoke run shows near-zero scores: **stop and go back to Curate/Iterate**. Do not run full eval.
+If smoke run shows near-zero scores: **stop and go back to Improve**. Do not run full eval.
 
 ---
 
