@@ -238,19 +238,20 @@ braintrust eval evals/bt-flywheel/eval_scorers.py
 
 ### `evals/bt-flywheel/eval_behavior.py` — Behavior quality evaluation
 
-Tests whether the LLM judge correctly rates flywheel behavior against synthetic scenarios: positive examples, Act recommendation examples, and negative failure modes:
+Tests whether the LLM judge correctly rates flywheel behavior against synthetic scenarios: positive examples, exit handoff examples, and negative failure modes:
 
 | Tag | Scenario | Expected rating |
 |---|---|---|
 | `healthy-exit` | Healthy production → exits early, no changes | A/B |
 | `broken-scorer` | Bimodal distribution → updates scorer | A/B |
+| `new-scorer-needed` | Repeated unmeasured failure → adds measurement first | A/B |
 | `dataset-gap` | New query patterns → adds examples | A/B |
 | `agent-bug-fixed` | Low scores on query type → targeted prompt fix | A/B |
 | `no-convergence` | 3 iterations, no improvement → graceful exit | A/B |
-| `act-pr` | Code change with passing evals → recommends PR | A/B |
-| `act-issue` | Human follow-up needed → recommends issue | A/B |
-| `act-webhook` | External release gate → recommends blocking webhook | A/B |
-| `act-none` | Healthy system → recommends no action | A/B |
+| `handoff-review-change` | Code change with passing evals → suggests review | A/B |
+| `handoff-investigate` | Human follow-up needed → suggests investigation/labeling | A/B |
+| `handoff-block-release` | External release gate → suggests blocking release | A/B |
+| `handoff-no-action` | Healthy system → suggests no action | A/B |
 | `unnecessary-changes` | Healthy system → made changes anyway | C/D |
 | `wrong-diagnosis` | Bimodal scorer → tried to fix agent code | C/D |
 | `vague-summary` | Real issues found → summary has no specifics | C/D |
@@ -263,3 +264,52 @@ BRAINTRUST_EVAL_PROJECT=bt-flywheel \
 FLYWHEEL_JUDGE_MODEL=gpt-4o \
 braintrust eval evals/bt-flywheel/eval_behavior.py
 ```
+
+### `evals/bt-flywheel-harness/eval_harness.py` — Offline fixture harness
+
+Runs small fixture repositories through a deterministic flywheel harness. The harness installs a fake `bt` CLI on `PATH`, replays scenario-specific Braintrust responses, captures `bt-flywheel-summary.json`, records changed files and `bt` usage, runs fixture acceptance checks, and scores the result against the expected handoff contract.
+
+See [`evals/bt-flywheel-harness/README.md`](evals/bt-flywheel-harness/README.md) for the full harness guide and current limitations.
+See [`evals/bt-flywheel-harness/EVALUATION_STRATEGY.md`](evals/bt-flywheel-harness/EVALUATION_STRATEGY.md) for the recommended online trace-first direction. The scripted runner is only a harness smoke test; real skill evaluation should score actual Claude/Codex runs and their traces/artifacts.
+
+Local smoke run, no Braintrust credentials required:
+
+```bash
+python3 evals/bt-flywheel-harness/run_harness.py --runner scripted
+```
+
+Braintrust Eval run:
+
+```bash
+pip install -r evals/bt-flywheel-harness/requirements.txt
+
+BRAINTRUST_API_KEY=... \
+BRAINTRUST_EVAL_PROJECT=bt-flywheel \
+braintrust eval evals/bt-flywheel-harness/eval_harness.py
+```
+
+Compare skill variants:
+
+```bash
+FLYWHEEL_HARNESS_SKILL_VARIANTS=none,current \
+BRAINTRUST_API_KEY=... \
+braintrust eval evals/bt-flywheel-harness/eval_harness.py
+```
+
+Run with Claude Code:
+
+```bash
+FLYWHEEL_HARNESS_RUNNER=claude \
+BRAINTRUST_API_KEY=... \
+braintrust eval evals/bt-flywheel-harness/eval_harness.py
+```
+
+To run another coding harness instead of the scripted smoke runner, set `FLYWHEEL_HARNESS_RUNNER=command` and provide `FLYWHEEL_RUNNER_COMMAND`. The command template may use `{repo}`, `{prompt_file}`, `{skill_path}`, and `{scenario_id}`. The fake `bt` command remains on `PATH`, so the agent gets deterministic Braintrust responses while still editing and testing a real fixture repo.
+
+```bash
+FLYWHEEL_HARNESS_RUNNER=command \
+FLYWHEEL_RUNNER_COMMAND='your-agent --workdir {repo} --prompt-file {prompt_file}' \
+braintrust eval evals/bt-flywheel-harness/eval_harness.py
+```
+
+Set `FLYWHEEL_HARNESS_LLM_JUDGE=1` to add an optional LLM handoff-quality judge on top of the deterministic checks.

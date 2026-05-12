@@ -1,0 +1,42 @@
+{
+  "id": "agent_bug",
+  "fixture": "agent_bug",
+  "goal": "Fix low-scoring multi-step math answers",
+  "task": "Investigate production math-query failures. Scores are low on multi-step math traces, and trace inspection suggests skipped intermediate reasoning. Decide what to change and verify it with the fixture checks before emitting the handoff.",
+  "bt": {
+    "routes": [
+      {
+        "argv_prefix": ["sql"],
+        "contains": ["math"],
+        "stdout_json": {
+          "rows": [
+            {"trace_id": "trace-math-042", "query_type": "math", "score": 0.2},
+            {"trace_id": "trace-math-077", "query_type": "math", "score": 0.3}
+          ],
+          "summary": "Math traces average 0.38 versus 0.81 for non-math traces."
+        }
+      },
+      {
+        "argv_prefix": ["view"],
+        "contains": ["trace-math-042"],
+        "stdout": "trace-math-042: model jumps to final answer and does not verify intermediate arithmetic."
+      }
+    ]
+  },
+  "acceptance": [["python3", "-m", "unittest", "discover", "-s", "tests"]],
+  "expected": {
+    "outcomes": ["improved"],
+    "required_next_step_intents": ["review_change"],
+    "required_terms": ["math", "step-by-step", "trace-math-042"],
+    "required_bt": [
+      {"argv0": "sql", "contains": ["math"]},
+      {"argv0": "view", "contains": ["trace-math-042"]}
+    ],
+    "allowed_changed_paths": [
+      "bt-flywheel-summary.json",
+      "bt-flywheel-narrative.md",
+      "src/agent.py"
+    ],
+    "forbidden_changed_paths": ["scorers/*", "evals/*"]
+  }
+}

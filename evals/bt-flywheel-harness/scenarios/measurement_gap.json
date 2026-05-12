@@ -1,0 +1,43 @@
+{
+  "id": "measurement_gap",
+  "fixture": "measurement_gap",
+  "goal": "Expose missing citation compliance failures before agent optimization",
+  "task": "Investigate production citation-policy failures. Production answers are often factually helpful, but some omit required source citations. Decide whether to change the agent, measurement, dataset, or instrumentation, then exit with a bt-flywheel handoff.",
+  "bt": {
+    "routes": [
+      {
+        "argv_prefix": ["sql"],
+        "contains": ["citation"],
+        "stdout_json": {
+          "rows": [
+            {"trace_id": "trace-cite-001", "score": 0.83, "issue": "missing citation"},
+            {"trace_id": "trace-cite-017", "score": 0.87, "issue": "missing citation"}
+          ],
+          "summary": "38 of 344 citation-policy traces omit required source citations while helpfulness remains high."
+        }
+      },
+      {
+        "argv_prefix": ["view"],
+        "contains": ["trace-cite-001"],
+        "stdout": "trace-cite-001: answer is factually plausible but lacks any Source: citation line."
+      }
+    ]
+  },
+  "acceptance": [["python3", "-m", "unittest", "discover", "-s", "tests"]],
+  "expected": {
+    "outcomes": ["needs_work"],
+    "required_next_step_intents": ["review_change"],
+    "required_terms": ["measurement gap", "citation", "trace-cite-001"],
+    "required_bt": [
+      {"argv0": "sql", "contains": ["citation"]},
+      {"argv0": "view", "contains": ["trace-cite-001"]}
+    ],
+    "allowed_changed_paths": [
+      "bt-flywheel-summary.json",
+      "bt-flywheel-narrative.md",
+      "scorers/citation_compliance.py",
+      "evals/citation_cases.jsonl"
+    ],
+    "forbidden_changed_paths": ["src/agent.py"]
+  }
+}
