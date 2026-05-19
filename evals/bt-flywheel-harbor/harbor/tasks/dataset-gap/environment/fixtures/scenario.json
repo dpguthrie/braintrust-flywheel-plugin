@@ -1,0 +1,186 @@
+{
+  "scenario": "dataset-gap",
+  "project": {
+    "id": "proj_support_agent",
+    "name": "Support Agent",
+    "org": "Braintrust Demos"
+  },
+  "expected": {
+    "route": "dataset",
+    "allowed_outcomes": ["improved", "needs_work"],
+    "allowed_mutations": ["dataset_write"]
+  },
+  "experiments": [
+    {
+      "id": "exp_baseline_dataset_gap",
+      "name": "support-agent-baseline",
+      "created": "2026-05-14T12:00:00Z",
+      "scores": {
+        "Task Success": 0.91,
+        "Output Contract": 1.0
+      }
+    }
+  ],
+  "evals": {
+    "smoke": {
+      "id": "exp_smoke_dataset_gap",
+      "url": "https://www.braintrust.dev/app/Braintrust%20Demos/p/Support%20Agent/experiments/exp_smoke_dataset_gap",
+      "scores": {
+        "Task Success": 0.93,
+        "Production Pattern Coverage": 0.72
+      }
+    },
+    "full": {
+      "id": "exp_full_dataset_gap",
+      "url": "https://www.braintrust.dev/app/Braintrust%20Demos/p/Support%20Agent/experiments/exp_full_dataset_gap",
+      "scores": {
+        "Task Success": 0.93,
+        "Production Pattern Coverage": 0.87
+      }
+    }
+  },
+  "datasets": [
+    {
+      "id": "dataset_support_eval",
+      "name": "Support Eval Dataset",
+      "row_count": 184
+    }
+  ],
+  "functions": [
+    {
+      "slug": "task-success",
+      "name": "Task Success",
+      "type": "scorer"
+    },
+    {
+      "slug": "production-pattern-coverage",
+      "name": "Production Pattern Coverage",
+      "type": "scorer"
+    }
+  ],
+  "function_view": {
+    "slug": "production-pattern-coverage",
+    "name": "Production Pattern Coverage",
+    "code": "def score(metadata): return metadata.get('production_pattern') is not None"
+  },
+  "dataset_view": {
+    "rows": [
+      {
+        "id": "support-password-reset",
+        "input": "How do I reset my password?",
+        "expected": "Use the password reset flow.",
+        "metadata": {
+          "split": "validation",
+          "production_pattern": "account_access"
+        }
+      }
+    ]
+  },
+  "sql": {
+    "schema_sample": {
+      "id": "trace_dataset_gap_001",
+      "input": {
+        "message": "The mobile app says device limit exceeded after replacing my phone."
+      },
+      "output": {
+        "answer": "Use device management settings."
+      },
+      "scores": {
+        "Task Success": 0.42,
+        "Output Contract": 1.0
+      },
+      "facets": {
+        "topic": "device_limit"
+      }
+    },
+    "score_summary": [
+      {
+        "window": "7d",
+        "trace_count": 210,
+        "task_success_avg": 0.91,
+        "device_limit_trace_count": 27,
+        "device_limit_task_success_avg": 0.42,
+        "captured_by_existing_scores": true
+      }
+    ],
+    "trace_search": [
+      {
+        "id": "trace_dataset_gap_001",
+        "score": 0.42,
+        "topic": "device_limit",
+        "note": "Device replacement wording is common in production"
+      },
+      {
+        "id": "trace_dataset_gap_002",
+        "score": 0.39,
+        "topic": "device_limit",
+        "note": "Same pattern absent from validation dataset"
+      }
+    ],
+    "dataset_gap": [
+      {
+        "production_cluster": "device_limit_after_phone_replacement",
+        "production_traces": 27,
+        "dataset_rows": 0,
+        "coverage": "missing"
+      }
+    ],
+    "default": [
+      {
+        "finding": "device-limit production pattern has low score and no eval dataset coverage",
+        "trace_count": 27,
+        "task_success_avg": 0.42,
+        "unmeasured_repeated_failure": false,
+        "dataset_gap": true
+      }
+    ]
+  },
+  "traces": [
+    {
+      "id": "trace_dataset_gap_001",
+      "url": "https://www.braintrust.dev/app/Braintrust%20Demos/p/Support%20Agent/r/trace_dataset_gap_001",
+      "input": {
+        "message": "The mobile app says device limit exceeded after replacing my phone."
+      },
+      "output": {
+        "answer": "Use device management settings."
+      },
+      "scores": {
+        "Task Success": 0.42,
+        "Output Contract": 1.0
+      },
+      "spans": [
+        {
+          "name": "root",
+          "type": "task",
+          "metadata": {
+            "topic": "device_limit"
+          }
+        }
+      ]
+    },
+    {
+      "id": "trace_dataset_gap_002",
+      "url": "https://www.braintrust.dev/app/Braintrust%20Demos/p/Support%20Agent/r/trace_dataset_gap_002",
+      "input": {
+        "message": "I upgraded phones and now the app says I have too many devices."
+      },
+      "output": {
+        "answer": "Please contact support."
+      },
+      "scores": {
+        "Task Success": 0.39,
+        "Output Contract": 1.0
+      },
+      "spans": [
+        {
+          "name": "root",
+          "type": "task",
+          "metadata": {
+            "topic": "device_limit"
+          }
+        }
+      ]
+    }
+  ]
+}

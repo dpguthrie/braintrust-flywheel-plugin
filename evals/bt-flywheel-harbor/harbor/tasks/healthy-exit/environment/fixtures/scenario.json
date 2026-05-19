@@ -1,0 +1,148 @@
+{
+  "scenario": "healthy-exit",
+  "project": {
+    "id": "proj_support_agent",
+    "name": "Support Agent",
+    "org": "Braintrust Demos"
+  },
+  "expected": {
+    "route": "healthy",
+    "allowed_outcomes": ["healthy"],
+    "allowed_mutations": []
+  },
+  "experiments": [
+    {
+      "id": "exp_baseline_healthy",
+      "name": "support-agent-baseline",
+      "created": "2026-05-14T12:00:00Z",
+      "scores": {
+        "Task Success": 0.97,
+        "Output Contract": 1.0
+      }
+    }
+  ],
+  "evals": {
+    "smoke": {
+      "id": "exp_smoke_healthy",
+      "url": "https://www.braintrust.dev/app/Braintrust%20Demos/p/Support%20Agent/experiments/exp_smoke_healthy",
+      "scores": {
+        "Task Success": 0.98
+      }
+    },
+    "full": {
+      "id": "exp_full_healthy",
+      "url": "https://www.braintrust.dev/app/Braintrust%20Demos/p/Support%20Agent/experiments/exp_full_healthy",
+      "scores": {
+        "Task Success": 0.98
+      }
+    }
+  },
+  "datasets": [
+    {
+      "id": "dataset_support_eval",
+      "name": "Support Eval Dataset",
+      "row_count": 184
+    }
+  ],
+  "functions": [
+    {
+      "slug": "task-success",
+      "name": "Task Success",
+      "type": "scorer"
+    }
+  ],
+  "function_view": {
+    "slug": "task-success",
+    "name": "Task Success",
+    "code": "def score(output, expected): return expected in output"
+  },
+  "dataset_view": {
+    "rows": [
+      {
+        "id": "support-password-reset",
+        "input": "How do I reset my password?",
+        "expected": "Use the password reset flow.",
+        "metadata": {
+          "split": "validation"
+        }
+      }
+    ]
+  },
+  "sql": {
+    "schema_sample": {
+      "id": "trace_healthy_001",
+      "input": {
+        "message": "How do I reset my password?"
+      },
+      "output": {
+        "answer": "Use the password reset flow."
+      },
+      "scores": {
+        "Task Success": 1.0,
+        "Output Contract": 1.0
+      },
+      "facets": {
+        "topic": "account_access"
+      }
+    },
+    "score_summary": [
+      {
+        "window": "7d",
+        "trace_count": 240,
+        "task_success_avg": 0.972,
+        "output_contract_avg": 1.0,
+        "error_rate": 0.0,
+        "p95_latency_ms": 1180
+      }
+    ],
+    "trace_search": [
+      {
+        "id": "trace_healthy_001",
+        "score": 1.0,
+        "topic": "account_access",
+        "note": "Representative healthy trace"
+      }
+    ],
+    "dataset_gap": [
+      {
+        "production_cluster": "account_access",
+        "dataset_rows": 42,
+        "coverage": "represented"
+      }
+    ],
+    "default": [
+      {
+        "finding": "production metrics are healthy",
+        "trace_count": 240,
+        "task_success_avg": 0.972,
+        "unmeasured_repeated_failure": false,
+        "dataset_gap": false
+      }
+    ]
+  },
+  "traces": [
+    {
+      "id": "trace_healthy_001",
+      "url": "https://www.braintrust.dev/app/Braintrust%20Demos/p/Support%20Agent/r/trace_healthy_001",
+      "input": {
+        "message": "How do I reset my password?"
+      },
+      "output": {
+        "answer": "Use the password reset flow."
+      },
+      "scores": {
+        "Task Success": 1.0,
+        "Output Contract": 1.0
+      },
+      "spans": [
+        {
+          "name": "root",
+          "type": "task",
+          "metadata": {
+            "topic": "account_access"
+          }
+        }
+      ]
+    }
+  ]
+}

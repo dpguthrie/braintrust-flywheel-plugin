@@ -8,6 +8,7 @@ This directory contains installable Braintrust skills. Each child directory is a
 |---|---|---|
 | `bt-flywheel` | Evidence-backed improvement loop for Braintrust-backed agents. | [`bt-flywheel/SKILL.md`](bt-flywheel/SKILL.md) |
 | `bt-cost-optimizer` | Usage-cost analysis across logs, scorers, Topics, Gateway/provider spend, datasets, and experiments. | [`bt-cost-optimizer/SKILL.md`](bt-cost-optimizer/SKILL.md) |
+| `bt-instrumentation-doctor` | Tracing-health review: trace structure, scorer setup, Thread view, payload shape, and cost — emits a prioritized plan tied to specific spans and code locations. | [`bt-instrumentation-doctor/SKILL.md`](bt-instrumentation-doctor/SKILL.md) |
 
 ## Skill Package Contract
 

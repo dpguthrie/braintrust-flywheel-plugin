@@ -1,0 +1,28 @@
+schema_version = "1.1"
+artifacts = ["/logs/artifacts/bt-flywheel-summary.json", "/logs/artifacts/bt-flywheel-narrative.md"]
+
+[task]
+name = "bt-flywheel/dataset-gap"
+description = "Production pattern is absent from eval data; route to dataset curation and verification."
+keywords = ["braintrust", "skill", "flywheel", "dataset"]
+
+[metadata]
+scenario = "dataset-gap"
+expected_route = "dataset"
+
+[verifier]
+timeout_sec = 120.0
+user = "root"
+
+[agent]
+timeout_sec = 900.0
+user = "agent"
+
+[environment]
+build_timeout_sec = 600.0
+os = "linux"
+cpus = 1
+memory_mb = 2048
+storage_mb = 10240
+allow_internet = true
+skills_dir = "/skills"

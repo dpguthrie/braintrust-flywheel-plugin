@@ -1,0 +1,28 @@
+schema_version = "1.1"
+artifacts = ["/logs/artifacts/bt-flywheel-summary.json", "/logs/artifacts/bt-flywheel-narrative.md"]
+
+[task]
+name = "bt-flywheel/healthy-exit"
+description = "Production metrics are healthy; the flywheel should exit without changes."
+keywords = ["braintrust", "skill", "flywheel", "healthy"]
+
+[metadata]
+scenario = "healthy-exit"
+expected_route = "healthy"
+
+[verifier]
+timeout_sec = 120.0
+user = "root"
+
+[agent]
+timeout_sec = 900.0
+user = "agent"
+
+[environment]
+build_timeout_sec = 600.0
+os = "linux"
+cpus = 1
+memory_mb = 2048
+storage_mb = 10240
+allow_internet = true
+skills_dir = "/skills"

@@ -1,0 +1,1 @@
+- is this possible to run as a sandbox / remote eval where there are different things we can parameterize?  woudl be a cool demo

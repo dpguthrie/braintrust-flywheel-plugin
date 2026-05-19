@@ -1,0 +1,42 @@
+# Suite selection config for the bt-flywheel Harbor offline eval.
+#
+# This file is not a Harbor JobConfig. The runner uses it to materialize
+# ordinary Harbor task directories for the selected bt-flywheel scenarios and
+# variants, then writes a native Harbor JobConfig for execution.
+
+[defaults]
+scenarios = ["healthy-exit", "measurement-gap", "dataset-gap"]
+harbor_bin = "harbor"
+jobs_dir = "jobs"
+timeout_sec = 3600
+max_concurrency = 4
+braintrust_project = "bt-flywheel"
+trace_mode = "normalized"
+
+[[conditions]]
+name = "braintrust-project-snapshot"
+description = "Use deterministic Braintrust project snapshots bundled with each Harbor task."
+enabled = true
+extra_args = []
+
+[[skill_variants]]
+name = "with-skill"
+description = "Inject the real bt-flywheel skill bundle into the Harbor sandbox."
+enabled = true
+
+[[skill_variants]]
+name = "no-skill"
+description = "Use the same task assets and verifier, but remove the bt-flywheel skill from the sandbox."
+enabled = true
+
+[[targets]]
+name = "codex-gpt-5.4"
+agent = "codex"
+models = ["openai/gpt-5.4"]
+enabled = true
+
+[[targets]]
+name = "claude-code-sonnet-4-6"
+agent = "claude-code"
+models = ["anthropic/claude-sonnet-4-6"]
+enabled = true

@@ -8,6 +8,7 @@ A collection of agent skills for working with [Braintrust](https://braintrust.de
 |---|---|
 | `bt-flywheel` | Continuously improve Braintrust-backed AI agents by mining traces, updating measurement/datasets/code/instrumentation, running evals, and emitting portable exit handoffs. |
 | `bt-cost-optimizer` | Analyze Braintrust logs, scorers, Topics, Gateway/provider spend, datasets, and experiments to recommend safe cost optimizations. |
+| `bt-instrumentation-doctor` | Review a project's traces and the surrounding codebase, then emit a prioritized plan for fixing trace structure, scorer scope, Thread view setup, payload shape, and tracing cost. |
 
 Install each skill by copying or installing the full directory under `skills/<skill-name>/`; references, scripts, and agent metadata are part of the skill.
 
@@ -17,7 +18,6 @@ Install each skill by copying or installing the full directory under `skills/<sk
 skills/<skill-name>/        Installable skill bundles. SKILL.md is the canonical per-skill entrypoint.
 examples/<skill-name>/      Copyable runner and integration examples.
 evals/<skill-name>/         Offline evals for validating a skill's behavior.
-scorers/<skill-name>/       Braintrust online scorers or support code for a skill.
 ```
 
 Do not add `README.md` files inside individual skill directories by default. Keep agent-facing instructions in `SKILL.md`, detailed context in `references/`, deterministic helpers in `scripts/`, and install/navigation docs in this README or [`skills/README.md`](skills/README.md).
@@ -62,7 +62,8 @@ The skill should not depend on a specific coding agent. Agent-specific files suc
 | Codex / Cursor / OpenCode examples | Templates | Use as starting points; adapt to each runner's current CLI/auth model |
 | Slack / Jira / Linear | Handoff only | The skill emits adapter-neutral `next_steps`; downstream harnesses map and execute them |
 | Webhooks | Handoff only | Use caller-owned configuration; never put raw webhook URLs in the handoff |
-| Online flywheel scorers | Best-effort portable | Assumes trace spans expose shell/edit/write events with names similar to `Bash`, `Terminal`, `Edit`, or `Write` |
+| Harbor offline evals | Experimental | Deterministic Braintrust project snapshots validate skill routing and handoff quality in sandboxed coding-agent runs |
+| Braintrust subprocess evals | Experimental | Minimal `Eval(...)` suite compares with-skill vs no-skill subprocess runs without Harbor |
 
 ## bt-cost-optimizer
 
@@ -78,6 +79,23 @@ The skill:
 
 The skill distinguishes measured findings from advisory recommendations. `bt` can measure sampled rows, scorer spans, token totals, and Topics config/status; exact bill totals, negotiated pricing, retention policy, and Gateway cache/routing config may require billing/UI or code/config context.
 
+## bt-instrumentation-doctor
+
+`bt-instrumentation-doctor` answers: "Is my Braintrust tracing healthy, and what concrete changes should I make in my codebase to improve it?"
+
+The skill:
+
+- Resolves project context via `bt status` / `.bt/config.json` and pulls bounded span and trace samples with `bt sql` and `bt view trace`.
+- Fetches online scorer automations via the REST `/v1/project_score` endpoint and surfaces scope/sampling/filter issues.
+- Cross-references the customer's codebase (Python, TypeScript/JavaScript, Go) to tie each finding to a specific file and line.
+- Runs a local analyzer over exported spans/traces to flag empty root I/O, anonymous span names, missing model/token metrics, scorer-span dominance, duplicate parent/child payloads, oversized fields, deep traces, and conversations fragmented across roots.
+- Emits `bt-tracing-plan.md` (prioritized, finding-by-finding) and `bt-tracing-summary.json` (machine-readable) so downstream automation can route the plan into review, issues, or a follow-up `bt-flywheel` run.
+
+Scope boundary with the other skills:
+
+- For deeper byte/scorer accounting on a single account, route to `bt-cost-optimizer`.
+- For the full Discover → Diagnose → Improve → Verify loop after the plan is shipped, route to `bt-flywheel`.
+
 ## Install Skills
 
 Install the whole skill directory, not only `SKILL.md`; the `references/`, `scripts/`, and `agents/` files are part of each skill.
@@ -92,6 +110,10 @@ python3 ~/.codex/skills/.system/skill-installer/scripts/install-skill-from-githu
 python3 ~/.codex/skills/.system/skill-installer/scripts/install-skill-from-github.py \
   --repo dpguthrie/braintrust-skills \
   --path skills/bt-cost-optimizer
+
+python3 ~/.codex/skills/.system/skill-installer/scripts/install-skill-from-github.py \
+  --repo dpguthrie/braintrust-skills \
+  --path skills/bt-instrumentation-doctor
 ```
 
 For project-local CI or another agent harness, copy the full skill directory into the runner's skill path:
@@ -103,6 +125,9 @@ curl -fsSL https://github.com/dpguthrie/braintrust-skills/archive/refs/heads/mai
 
 curl -fsSL https://github.com/dpguthrie/braintrust-skills/archive/refs/heads/main.tar.gz \
   | tar -xz --strip-components=2 -C .agent-skills braintrust-skills-main/skills/bt-cost-optimizer
+
+curl -fsSL https://github.com/dpguthrie/braintrust-skills/archive/refs/heads/main.tar.gz \
+  | tar -xz --strip-components=2 -C .agent-skills braintrust-skills-main/skills/bt-instrumentation-doctor
 ```
 
 For Claude Code (and most other agents), use `npx skills`:
@@ -110,6 +135,7 @@ For Claude Code (and most other agents), use `npx skills`:
 ```bash
 npx skills add dpguthrie/braintrust-skills@bt-flywheel -g -y
 npx skills add dpguthrie/braintrust-skills@bt-cost-optimizer -g -y
+npx skills add dpguthrie/braintrust-skills@bt-instrumentation-doctor -g -y
 ```
 
 ## Usage
@@ -119,6 +145,7 @@ Once installed, invoke the skill directly if your agent supports skills:
 ```
 /bt-flywheel
 /bt-cost-optimizer
+/bt-instrumentation-doctor
 ```
 
 Or ask any coding agent to run the skill from the skill path:
@@ -134,6 +161,7 @@ For ingest optimization:
 - [`bt` CLI](https://github.com/braintrustdata/bt) installed and authenticated
 - A Braintrust project with logs, experiments, or datasets to inspect
 - (Optional) `.bt/config.json` configured via `bt setup` for zero-config project resolution
+- (For offline skill evals) Docker available; `evals/bt-flywheel-harbor/run.sh` installs Harbor into its eval venv, and `evals/bt-flywheel-docker/run_docker.sh` builds the minimal Docker subprocess image
 
 ---
 
@@ -171,95 +199,81 @@ The same skill can be invoked from many harnesses:
 
 ---
 
-## Flywheel Quality Scorers
-
-The `scorers/bt-flywheel/` directory contains six Braintrust online scorers that evaluate the quality of the flywheel's own execution — i.e., whether the coding agent runner is following the flywheel methodology correctly.
-
-These are not scorers for your downstream task agent. They score the flywheel coding-agent session itself, catching things like:
-
-| Scorer | What it catches |
-|---|---|
-| Evidence Before Change | Agent editing code without first running `bt sql` or `bt view` |
-| Smoke Test Discipline | Running a full eval without a smoke run first |
-| Run Efficiency | Duplicate Bash commands or unnecessary credential-seeking calls |
-| Narrative Specificity | Run summaries that are vague ("improved performance") instead of specific (exact deltas, trace links) |
-| Diagnostic Coherence | Code changes that aren't motivated by the actual findings |
-| Claimed vs Actual | Summary claiming changes that don't match the actual Edit/Write spans |
-
-### Deploying the scorers
-
-Install dependencies and push once to register them in the Braintrust project where your coding-agent traces are logged:
-
-```bash
-pip install -r scorers/bt-flywheel/requirements.txt
-
-BRAINTRUST_API_KEY=... \
-BRAINTRUST_CC_PROJECT=my-agent-coding-agent \
-FLYWHEEL_CODE_PATHS="src/|evals/|scorers\.py" \
-bt functions push --language python \
-  --requirements scorers/bt-flywheel/requirements.txt \
-  --if-exists replace \
-  scorers/bt-flywheel/flywheel_scorers.py
-```
-
-Re-run any time you want to push updated scorer logic.
-
-`FLYWHEEL_CODE_PATHS` scopes edit-tracking scorers to your source files. Leave it empty to match all Edit/Write spans.
-
-Trace assumption: the online scorers inspect span names for shell/edit/write events. They expect names similar to `Bash:`, `Terminal:`, `Edit:`, or `Write:`. If your coding agent logs different span names, adapt `scorers/bt-flywheel/_scoring.py` before relying on those scores.
-
-The LLM-judge scorers (`Narrative Specificity`, `Diagnostic Coherence`) use `gpt-4o-mini` by default. Override with `FLYWHEEL_JUDGE_MODEL=<model>`.
-
----
-
 ## Offline Evals
 
-The `evals/bt-flywheel/` directory contains two Braintrust offline evals for measuring the quality of the flywheel skill itself.
+There are two primary bt-flywheel eval paths:
 
-### Why offline evals?
+| Suite | Use when |
+|---|---|
+| `evals/bt-flywheel-harbor/` | You want Harbor to own sandboxed coding-agent execution, native agent adapters, job artifacts, and trial concurrency, then import the job into Braintrust. |
+| `evals/bt-flywheel-docker/` | You want a minimal Docker image that runs `bt eval ...` directly while keeping the task as a subprocess. |
 
-The online scorers (above) catch anti-patterns in individual live runs. The offline evals complement them by:
-
-- Testing the scorer functions against fixture data (regression safety net for scorer changes)
-- Validating that the LLM judge rubric correctly distinguishes good flywheel behavior from known failure modes
-- Providing a benchmark dataset of positive and negative examples you can extend as new failure modes are discovered
-
-### `evals/bt-flywheel/eval_scorers.py` — Scorer unit tests
-
-Tests the four deterministic scorer functions (`Evidence Before Change`, `Smoke Test Discipline`, `Run Efficiency`, `Claimed vs Actual`) against 22 fixture span sequences. Each case asserts the computed score falls within an expected range.
+Run the simple Docker subprocess suite:
 
 ```bash
-pip install -r evals/bt-flywheel/requirements.txt
-
-BRAINTRUST_API_KEY=... \
-BRAINTRUST_EVAL_PROJECT=bt-flywheel \
-braintrust eval evals/bt-flywheel/eval_scorers.py
+UPLOAD=1 evals/bt-flywheel-docker/run_docker.sh
 ```
 
-### `evals/bt-flywheel/eval_behavior.py` — Behavior quality evaluation
-
-Tests whether the LLM judge correctly rates flywheel behavior against synthetic scenarios: positive examples, Act recommendation examples, and negative failure modes:
-
-| Tag | Scenario | Expected rating |
-|---|---|---|
-| `healthy-exit` | Healthy production → exits early, no changes | A/B |
-| `broken-scorer` | Bimodal distribution → updates scorer | A/B |
-| `dataset-gap` | New query patterns → adds examples | A/B |
-| `agent-bug-fixed` | Low scores on query type → targeted prompt fix | A/B |
-| `no-convergence` | 3 iterations, no improvement → graceful exit | A/B |
-| `act-pr` | Code change with passing evals → recommends PR | A/B |
-| `act-issue` | Human follow-up needed → recommends issue | A/B |
-| `act-webhook` | External release gate → recommends blocking webhook | A/B |
-| `act-none` | Healthy system → recommends no action | A/B |
-| `unnecessary-changes` | Healthy system → made changes anyway | C/D |
-| `wrong-diagnosis` | Bimodal scorer → tried to fix agent code | C/D |
-| `vague-summary` | Real issues found → summary has no specifics | C/D |
-| `ignored-regressions` | Metric improved but 5 regressions → marked done | C/D |
-| `incomplete-diagnosis` | Two issues found → only addressed one | C/D |
+Inside the container, the command is still:
 
 ```bash
-BRAINTRUST_API_KEY=... \
-BRAINTRUST_EVAL_PROJECT=bt-flywheel \
-FLYWHEEL_JUDGE_MODEL=gpt-4o \
-braintrust eval evals/bt-flywheel/eval_behavior.py
+bt eval --runner python3 evals/bt-flywheel-docker/eval_subprocess.py
 ```
+
+The Docker subprocess suite defaults to Claude Code:
+
+```json
+["claude", "--print", "--dangerously-skip-permissions", "--output-format", "json", "--model", "{model}", "--no-session-persistence", "{prompt}"]
+```
+
+For Claude Code tracing, the Docker image installs Braintrust's Claude Code tracing plugin and the eval passes `CC_PARENT_SPAN_ID`, `CC_ROOT_SPAN_ID`, and `CC_EXPERIMENT_ID` into the subprocess environment.
+
+The `evals/bt-flywheel-harbor/` directory contains a Harbor-backed Braintrust offline eval for measuring the flywheel skill itself. One Harbor job is treated as one Braintrust experiment: Harbor runs the sandboxed coding-agent trials with its own concurrency, and the importer logs each Harbor trial back to Braintrust as an experiment row with normalized traces, scores, metadata, and artifacts.
+
+Reusable Harbor/Braintrust glue comes from the `braintrust-harbor` PyPI package. The bt-flywheel suite owns its task materialization, fake Braintrust fixtures, verifiers, and skill-specific scorers under `evals/bt-flywheel-harbor/`.
+
+Default scenarios:
+
+| Scenario | Expected behavior |
+|---|---|
+| `healthy-exit` | Production metrics are healthy, so the flywheel exits with `outcome=healthy` and `next_steps[0].intent=no_action`. |
+| `measurement-gap` | Traces show a repeated failure mode not captured by scores, so the flywheel routes to measurement/scorer work before agent changes. |
+| `dataset-gap` | Production contains a pattern absent from eval data, so the flywheel curates dataset rows and runs smoke before full eval. |
+
+Braintrust scores cover the verifier reward, schema validity, route correctness, process discipline, normalized trace quality, evidence alignment, skill selection, tool efficiency, runtime/cost, and blast-radius safety. Use `metadata.skill_variant`, `metadata.agent`, `metadata.model`, and `metadata.target` to compare with-skill vs no-skill baselines across harnesses.
+
+Run a single Harbor task directly:
+
+```bash
+uv tool install harbor
+
+harbor run -p evals/bt-flywheel-harbor/harbor/tasks/healthy-exit -a codex -m "${HARBOR_MODEL:-openai/gpt-5.4}"
+```
+
+Run the Braintrust eval locally without upload:
+
+```bash
+evals/bt-flywheel-harbor/run.sh
+```
+
+Upload results when stable:
+
+```bash
+UPLOAD=1 evals/bt-flywheel-harbor/run.sh
+```
+
+Useful knobs:
+
+| Variable | Purpose |
+|---|---|
+| `HARBOR_SCENARIOS=healthy-exit,dataset-gap` | Run a subset of scenarios |
+| `HARBOR_TARGETS=codex-gpt-5.4` | Run selected targets from the bt-flywheel suite config |
+| `HARBOR_TARGETS=claude-code-sonnet-4-6` | Run only the Claude Code target |
+| `HARBOR_MAX_CONCURRENCY=4` | Control Harbor trial concurrency |
+| `HARBOR_AGENT=codex` | Select the Harbor agent, for example `codex` or `claude-code` |
+| `HARBOR_MODEL=openai/gpt-5.4` | Select the model passed to Harbor, for example `openai/gpt-5.4` or `anthropic/claude-sonnet-4-6` |
+| `HARBOR_EXTRA_ARGS="..."` | Pass additional flags to `harbor run` |
+| `UPLOAD=1` | Upload the run to Braintrust instead of local-only mode |
+| `BRAINTRUST_EVAL_PROJECT=bt-flywheel` | Select the Braintrust eval project |
+
+See [`evals/README.md`](evals/README.md) for the task layout and [`evals/bt-flywheel-harbor/DEMO.md`](evals/bt-flywheel-harbor/DEMO.md) for the local/CI demo and developer-tooling mapping.

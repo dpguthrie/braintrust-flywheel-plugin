@@ -218,3 +218,7 @@ __marimo__/
 .streamlit/secrets.toml
 
 .bt/
+jobs/
+evals/bt-flywheel/.generated/
+
+.generated/

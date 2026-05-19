@@ -1,0 +1,204 @@
+#!/usr/bin/env python3
+"""Local `bt` CLI adapter for bt-flywheel Harbor tasks."""
+
+from __future__ import annotations
+
+import json
+import os
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
+
+
+SCENARIO_FILE = Path(os.getenv("BT_PROJECT_SNAPSHOT_FILE", "/fixtures/scenario.json"))
+LOG_PATH = Path(os.getenv("BT_COMMAND_LOG", "/logs/artifacts/bt-command-log.jsonl"))
+WRITE_DIR = Path(os.getenv("BT_WRITE_DIR", "/logs/artifacts"))
+
+
+def load_scenario() -> dict[str, Any]:
+    with SCENARIO_FILE.open("r", encoding="utf-8") as handle:
+        return json.load(handle)
+
+
+def emit(value: Any, json_mode: bool = True) -> None:
+    if json_mode:
+        print(json.dumps(value, indent=2, sort_keys=True))
+    elif isinstance(value, str):
+        print(value)
+    else:
+        print(json.dumps(value, indent=2, sort_keys=True))
+
+
+def arg_after(args: list[str], flag: str) -> str | None:
+    try:
+        return args[args.index(flag) + 1]
+    except (ValueError, IndexError):
+        return None
+
+
+def classify(args: list[str]) -> tuple[str, bool]:
+    if not args:
+        return ("help", False)
+    head = args[0]
+    if head == "status":
+        return ("status", False)
+    if head == "projects":
+        return ("project_read", False)
+    if head == "experiments":
+        return ("experiment_read", False)
+    if head == "sql":
+        return ("sql", False)
+    if head == "view":
+        return ("trace_view", False)
+    if head == "datasets":
+        action = args[1] if len(args) > 1 else ""
+        return ("dataset_write" if action in {"create", "update", "delete"} else "dataset_read", action in {"create", "update", "delete"})
+    if head == "functions":
+        action = args[1] if len(args) > 1 else ""
+        return ("function_write" if action in {"push", "delete"} else "function_read", action in {"push", "delete"})
+    if head == "eval":
+        return ("eval_smoke" if "--first" in args or "--sample" in args else "eval_full", False)
+    return (f"unknown:{head}", False)
+
+
+def log_command(args: list[str], scenario: dict[str, Any]) -> tuple[str, bool]:
+    command_class, mutating = classify(args)
+    LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+    row = {
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "scenario": scenario["scenario"],
+        "argv": ["bt", *args],
+        "cwd": os.getcwd(),
+        "command_class": command_class,
+        "mutating": mutating,
+    }
+    with LOG_PATH.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(row, sort_keys=True) + "\n")
+    return command_class, mutating
+
+
+def sql_response(query: str, scenario: dict[str, Any]) -> Any:
+    lowered = query.lower()
+    sql = scenario["sql"]
+    if "limit 1" in lowered or "select *" in lowered:
+        return [sql["schema_sample"]]
+    if "dataset" in lowered or "missing" in lowered or "represented" in lowered:
+        return sql.get("dataset_gap", sql["default"])
+    if "failure" in lowered or "error" in lowered or "score" in lowered or "avg" in lowered:
+        return sql.get("score_summary", sql["default"])
+    if "search(" in lowered or "match" in lowered or "trace" in lowered:
+        return sql.get("trace_search", sql["default"])
+    return sql["default"]
+
+
+def read_stdin_payload() -> Any:
+    if sys.stdin.isatty():
+        return None
+    text = sys.stdin.read()
+    if not text.strip():
+        return None
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        return text
+
+
+def persist_local_write(prefix: str, payload: Any) -> str:
+    WRITE_DIR.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    path = WRITE_DIR / f"{prefix}-{stamp}.json"
+    with path.open("w", encoding="utf-8") as handle:
+        json.dump(payload, handle, indent=2, sort_keys=True)
+        handle.write("\n")
+    return str(path)
+
+
+def main() -> int:
+    scenario = load_scenario()
+    args = sys.argv[1:]
+    command_class, _ = log_command(args, scenario)
+    json_mode = "--json" in args or command_class in {"sql", "trace_view"}
+
+    if not args or args[0] in {"--help", "-h"}:
+        emit("bt: supported commands are status, projects, experiments, sql, view, datasets, functions, eval", False)
+        return 0
+
+    project = scenario["project"]
+
+    if args[0] == "status":
+        emit({"org": project["org"], "profile": "harbor", "logged_in": True}, json_mode)
+        return 0
+
+    if args[:2] == ["projects", "list"]:
+        value = [{"id": project["id"], "name": project["name"]}]
+        if json_mode:
+            emit(value)
+        else:
+            emit(f"{project['id']}\t{project['name']}", False)
+        return 0
+
+    if args[:2] == ["experiments", "list"]:
+        emit(scenario["experiments"], json_mode)
+        return 0
+
+    if args[0] == "sql":
+        query = " ".join(arg for arg in args[1:] if not arg.startswith("-"))
+        emit(sql_response(query, scenario), True)
+        return 0
+
+    if args[:2] == ["view", "trace"] or args[:1] == ["view"]:
+        trace_id = arg_after(args, "--trace-id") or arg_after(args, "--id") or scenario["traces"][0]["id"]
+        trace = next((item for item in scenario["traces"] if item["id"] == trace_id), scenario["traces"][0])
+        emit(trace, True)
+        return 0
+
+    if args[0] == "datasets":
+        action = args[1] if len(args) > 1 else "list"
+        if action == "list":
+            emit(scenario.get("datasets", []), json_mode)
+            return 0
+        if action == "view":
+            emit(scenario.get("dataset_view", {"rows": []}), True)
+            return 0
+        if action in {"create", "update"}:
+            payload = read_stdin_payload()
+            path = persist_local_write("dataset-write", {"argv": args, "payload": payload})
+            emit({"ok": True, "action": action, "artifact": path}, True)
+            return 0
+
+    if args[0] == "functions":
+        action = args[1] if len(args) > 1 else "list"
+        if action == "list":
+            emit(scenario.get("functions", []), json_mode)
+            return 0
+        if action == "view":
+            emit(scenario.get("function_view", {"slug": args[-1], "code": "# scorer"}), True)
+            return 0
+        if action == "push":
+            path = persist_local_write("function-write", {"argv": args})
+            emit({"ok": True, "action": "push", "artifact": path}, True)
+            return 0
+
+    if args[0] == "eval":
+        smoke = command_class == "eval_smoke"
+        experiment = scenario["evals"]["smoke" if smoke else "full"]
+        emit(
+            {
+                "ok": True,
+                "experiment_id": experiment["id"],
+                "experiment_url": experiment["url"],
+                "scores": experiment["scores"],
+            },
+            True,
+        )
+        if not json_mode:
+            print(f"Experiment {experiment['id']} complete: {experiment['url']}")
+        return 0
+
+    emit({"ok": True, "warning": "bt accepted unknown command", "argv": args}, True)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

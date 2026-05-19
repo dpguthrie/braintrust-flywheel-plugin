@@ -1,0 +1,4 @@
+interface:
+  display_name: "Braintrust Instrumentation Doctor"
+  short_description: "Review a Braintrust project's traces and codebase, then produce a prioritized plan for improving trace structure, scorers, threads, payload shape, and cost"
+  default_prompt: "Use $bt-instrumentation-doctor to review my Braintrust instrumentation. Inspect traces and the codebase, then produce bt-tracing-plan.md and bt-tracing-summary.json."

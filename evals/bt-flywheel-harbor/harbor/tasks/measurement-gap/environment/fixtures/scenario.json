@@ -1,0 +1,179 @@
+{
+  "scenario": "measurement-gap",
+  "project": {
+    "id": "proj_support_agent",
+    "name": "Support Agent",
+    "org": "Braintrust Demos"
+  },
+  "expected": {
+    "route": "measurement",
+    "allowed_outcomes": ["needs_work", "blocked"],
+    "allowed_mutations": []
+  },
+  "experiments": [
+    {
+      "id": "exp_baseline_measurement_gap",
+      "name": "support-agent-baseline",
+      "created": "2026-05-14T12:00:00Z",
+      "scores": {
+        "Task Success": 0.94,
+        "Output Contract": 1.0
+      }
+    }
+  ],
+  "evals": {
+    "smoke": {
+      "id": "exp_smoke_measurement_gap",
+      "url": "https://www.braintrust.dev/app/Braintrust%20Demos/p/Support%20Agent/experiments/exp_smoke_measurement_gap",
+      "scores": {
+        "Task Success": 0.94
+      }
+    },
+    "full": {
+      "id": "exp_full_measurement_gap",
+      "url": "https://www.braintrust.dev/app/Braintrust%20Demos/p/Support%20Agent/experiments/exp_full_measurement_gap",
+      "scores": {
+        "Task Success": 0.94
+      }
+    }
+  },
+  "datasets": [
+    {
+      "id": "dataset_support_eval",
+      "name": "Support Eval Dataset",
+      "row_count": 184
+    }
+  ],
+  "functions": [
+    {
+      "slug": "task-success",
+      "name": "Task Success",
+      "type": "scorer"
+    }
+  ],
+  "function_view": {
+    "slug": "task-success",
+    "name": "Task Success",
+    "code": "def score(output, expected): return expected in output"
+  },
+  "dataset_view": {
+    "rows": [
+      {
+        "id": "support-password-reset",
+        "input": "How do I reset my password?",
+        "expected": "Use the password reset flow.",
+        "metadata": {
+          "split": "validation"
+        }
+      }
+    ]
+  },
+  "sql": {
+    "schema_sample": {
+      "id": "trace_measurement_gap_001",
+      "input": {
+        "message": "Can I get a refund after renewal?"
+      },
+      "output": {
+        "answer": "I cannot help with billing."
+      },
+      "scores": {
+        "Task Success": 1.0,
+        "Output Contract": 1.0
+      },
+      "facets": {
+        "topic": "billing"
+      }
+    },
+    "score_summary": [
+      {
+        "window": "7d",
+        "trace_count": 180,
+        "task_success_avg": 0.944,
+        "output_contract_avg": 1.0,
+        "manual_review_failures": 19,
+        "captured_by_existing_scores": false
+      }
+    ],
+    "trace_search": [
+      {
+        "id": "trace_measurement_gap_001",
+        "score": 1.0,
+        "manual_label": "bad_refusal",
+        "note": "Agent refused a billing policy question, but Task Success stayed 1.0"
+      },
+      {
+        "id": "trace_measurement_gap_002",
+        "score": 1.0,
+        "manual_label": "bad_refusal",
+        "note": "Repeated unsupported handoff language"
+      }
+    ],
+    "dataset_gap": [
+      {
+        "production_cluster": "billing_policy_refusal",
+        "dataset_rows": 14,
+        "coverage": "represented"
+      }
+    ],
+    "default": [
+      {
+        "finding": "repeated billing refusal is visible in traces but not captured by existing scores",
+        "trace_count": 19,
+        "task_success_avg": 1.0,
+        "unmeasured_repeated_failure": true,
+        "dataset_gap": false
+      }
+    ]
+  },
+  "traces": [
+    {
+      "id": "trace_measurement_gap_001",
+      "url": "https://www.braintrust.dev/app/Braintrust%20Demos/p/Support%20Agent/r/trace_measurement_gap_001",
+      "input": {
+        "message": "Can I get a refund after renewal?"
+      },
+      "output": {
+        "answer": "I cannot help with billing."
+      },
+      "scores": {
+        "Task Success": 1.0,
+        "Output Contract": 1.0
+      },
+      "manual_label": "bad_refusal",
+      "spans": [
+        {
+          "name": "root",
+          "type": "task",
+          "metadata": {
+            "topic": "billing"
+          }
+        }
+      ]
+    },
+    {
+      "id": "trace_measurement_gap_002",
+      "url": "https://www.braintrust.dev/app/Braintrust%20Demos/p/Support%20Agent/r/trace_measurement_gap_002",
+      "input": {
+        "message": "Do I lose access if payment fails?"
+      },
+      "output": {
+        "answer": "Please contact support."
+      },
+      "scores": {
+        "Task Success": 1.0,
+        "Output Contract": 1.0
+      },
+      "manual_label": "bad_handoff",
+      "spans": [
+        {
+          "name": "root",
+          "type": "task",
+          "metadata": {
+            "topic": "billing"
+          }
+        }
+      ]
+    }
+  ]
+}

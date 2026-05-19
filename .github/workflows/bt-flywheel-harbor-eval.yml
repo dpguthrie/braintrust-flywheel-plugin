@@ -1,0 +1,62 @@
+name: bt-flywheel Harbor eval
+
+on:
+  workflow_dispatch:
+    inputs:
+      scenarios:
+        description: "Comma-separated scenario names to run. Leave empty for suite defaults."
+        required: false
+        default: ""
+      targets:
+        description: "Comma-separated target names from evals/bt-flywheel-harbor/suite.toml. Leave empty for enabled targets."
+        required: false
+        default: ""
+      skill_variants:
+        description: "Comma-separated skill variants, for example with-skill,no-skill. Leave empty for suite defaults."
+        required: false
+        default: ""
+      max_concurrency:
+        description: "Maximum Braintrust eval rows to run concurrently."
+        required: false
+        default: "4"
+      upload:
+        description: "Upload results to Braintrust."
+        required: false
+        default: "true"
+        type: choice
+        options:
+          - "true"
+          - "false"
+  schedule:
+    - cron: "0 8 * * 1"
+
+jobs:
+  bt-flywheel-harbor-eval:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: astral-sh/setup-uv@v5
+
+      - name: Run Harbor eval
+        env:
+          BRAINTRUST_API_KEY: ${{ secrets.BRAINTRUST_API_KEY }}
+          BRAINTRUST_EVAL_PROJECT: bt-flywheel
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          ANTHROPIC_AUTH_TOKEN: ${{ secrets.ANTHROPIC_AUTH_TOKEN }}
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          UPLOAD: ${{ github.event_name == 'schedule' && '1' || (github.event.inputs.upload == 'true' && '1' || '0') }}
+          HARBOR_SCENARIOS: ${{ github.event.inputs.scenarios || '' }}
+          HARBOR_TARGETS: ${{ github.event.inputs.targets || '' }}
+          HARBOR_SKILL_VARIANTS: ${{ github.event.inputs.skill_variants || '' }}
+          HARBOR_MAX_CONCURRENCY: ${{ github.event.inputs.max_concurrency || '4' }}
+        run: evals/bt-flywheel-harbor/run.sh

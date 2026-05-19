@@ -1,0 +1,28 @@
+schema_version = "1.1"
+artifacts = ["/logs/artifacts/bt-flywheel-summary.json", "/logs/artifacts/bt-flywheel-narrative.md"]
+
+[task]
+name = "bt-flywheel/measurement-gap"
+description = "Repeated production issue is not captured by existing scores; route to measurement work."
+keywords = ["braintrust", "skill", "flywheel", "measurement"]
+
+[metadata]
+scenario = "measurement-gap"
+expected_route = "measurement"
+
+[verifier]
+timeout_sec = 120.0
+user = "root"
+
+[agent]
+timeout_sec = 900.0
+user = "agent"
+
+[environment]
+build_timeout_sec = 600.0
+os = "linux"
+cpus = 1
+memory_mb = 2048
+storage_mb = 10240
+allow_internet = true
+skills_dir = "/skills"
